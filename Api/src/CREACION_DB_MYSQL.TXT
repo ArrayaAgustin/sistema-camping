@@ -1,0 +1,1203 @@
+
+/*
+-- ============================================
+-- SISTEMA DE GESTIÓN DE CAMPINGS - SMATA
+-- Base de Datos MySQL 8.0+
+-- ============================================
+
+-- Crear base de datos
+CREATE DATABASE IF NOT EXISTS camping_smata 
+  CHARACTER SET utf8mb4 
+  COLLATE utf8mb4_unicode_ci;
+
+USE camping_smata;
+
+-- ============================================
+-- TABLA: Versiones del Padrón
+-- Control de actualizaciones para sincronización
+-- ============================================
+CREATE TABLE padron_versiones (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  version VARCHAR(50) UNIQUE NOT NULL,
+  fecha_actualizacion TIMESTAMP NOT NULL,
+  total_afiliados INT DEFAULT 0,
+  total_familiares INT DEFAULT 0,
+  descripcion TEXT,
+  hash_checksum VARCHAR(64),  -- MD5 o SHA256 del JSON original
+  usuario_carga_id INT NULL,
+  activo BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  INDEX idx_version (version),
+  INDEX idx_fecha (fecha_actualizacion),
+  INDEX idx_activo (activo)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Afiliados
+-- ============================================
+CREATE TABLE afiliados (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  cuil VARCHAR(11) UNIQUE NOT NULL,
+  dni VARCHAR(8) UNIQUE NOT NULL,
+  apellido VARCHAR(100) NOT NULL,
+  nombres VARCHAR(100) NOT NULL,
+  sexo ENUM('M', 'F', 'X') NOT NULL,
+  tipo_afiliado VARCHAR(50),
+  fecha_nacimiento DATE,
+  categoria VARCHAR(100),
+  situacion_sindicato ENUM('ACTIVO', 'BAJA', 'JUBILADO', 'RETIRADO') DEFAULT 'ACTIVO',
+  situacion_obra_social ENUM('ACTIVO', 'BAJA') DEFAULT 'ACTIVO',
+  domicilio VARCHAR(255),
+  provincia VARCHAR(100),
+  localidad VARCHAR(100),
+  codigo_postal VARCHAR(10),
+  telefono VARCHAR(50),
+  email VARCHAR(100),
+  grupo_sanguineo VARCHAR(5),
+  foto_url VARCHAR(255),
+  qr_code TEXT,
+  padron_version_id INT,
+  activo BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (padron_version_id) REFERENCES padron_versiones(id),
+  
+  INDEX idx_dni (dni),
+  INDEX idx_cuil (cuil),
+  INDEX idx_apellido (apellido),
+  INDEX idx_nombres (nombres),
+  INDEX idx_apellido_nombres (apellido, nombres),
+  INDEX idx_situacion_sindicato (situacion_sindicato),
+  INDEX idx_activo (activo),
+  INDEX idx_padron_version (padron_version_id),
+  FULLTEXT idx_fulltext_search (apellido, nombres, dni)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Familiares
+-- ============================================
+CREATE TABLE familiares (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  afiliado_id INT NOT NULL,
+  nombre VARCHAR(200) NOT NULL,
+  dni VARCHAR(8),
+  fecha_nacimiento DATE,
+  edad INT,
+  estudia BOOLEAN DEFAULT FALSE,
+  discapacitado BOOLEAN DEFAULT FALSE,
+  baja BOOLEAN DEFAULT FALSE,
+  qr_code TEXT,
+  activo BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (afiliado_id) REFERENCES afiliados(id) ON DELETE CASCADE,
+  INDEX idx_afiliado_id (afiliado_id),
+  INDEX idx_dni (dni),
+  INDEX idx_nombre (nombre),
+  INDEX idx_afiliado_activo (afiliado_id, activo),
+  INDEX idx_baja (baja)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Usuarios
+-- ============================================
+CREATE TABLE usuarios (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  email VARCHAR(100),
+  afiliado_id INT NULL,
+  activo BOOLEAN DEFAULT TRUE,
+  ultimo_acceso TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (afiliado_id) REFERENCES afiliados(id) ON DELETE SET NULL,
+  INDEX idx_username (username),
+  INDEX idx_afiliado (afiliado_id),
+  INDEX idx_activo (activo)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Roles
+-- ============================================
+CREATE TABLE roles (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  nombre VARCHAR(50) UNIQUE NOT NULL,
+  descripcion TEXT,
+  permisos JSON,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Usuario-Roles (Relación N:N)
+-- ============================================
+CREATE TABLE usuario_roles (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  usuario_id INT NOT NULL,
+  rol_id INT NOT NULL,
+  camping_id INT NULL,
+  activo BOOLEAN DEFAULT TRUE,
+  fecha_asignacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+  FOREIGN KEY (rol_id) REFERENCES roles(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_usuario_rol_camping (usuario_id, rol_id, camping_id),
+  INDEX idx_usuario (usuario_id),
+  INDEX idx_rol (rol_id),
+  INDEX idx_camping (camping_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Campings
+-- ============================================
+CREATE TABLE campings (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  nombre VARCHAR(200) NOT NULL,
+  ubicacion VARCHAR(255),
+  provincia VARCHAR(100),
+  localidad VARCHAR(100),
+  telefono VARCHAR(50),
+  email VARCHAR(100),
+  activo BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  INDEX idx_nombre (nombre),
+  INDEX idx_activo (activo)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Agregar FK después de crear tabla campings
+ALTER TABLE usuario_roles 
+  ADD FOREIGN KEY (camping_id) REFERENCES campings(id) ON DELETE SET NULL;
+
+-- ============================================
+-- TABLA: Períodos de Caja
+-- ============================================
+CREATE TABLE periodos_caja (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  camping_id INT NOT NULL,
+  usuario_apertura_id INT NOT NULL,
+  usuario_cierre_id INT NULL,
+  fecha_apertura TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  fecha_cierre TIMESTAMP NULL,
+  total_visitas INT DEFAULT 0,
+  observaciones TEXT,
+  sincronizado BOOLEAN DEFAULT TRUE,
+  activo BOOLEAN DEFAULT TRUE,
+  
+  FOREIGN KEY (camping_id) REFERENCES campings(id),
+  FOREIGN KEY (usuario_apertura_id) REFERENCES usuarios(id),
+  FOREIGN KEY (usuario_cierre_id) REFERENCES usuarios(id),
+  INDEX idx_camping_fecha (camping_id, fecha_apertura),
+  INDEX idx_activo (activo),
+  INDEX idx_sincronizado (sincronizado)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Visitas
+-- ============================================
+CREATE TABLE visitas (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  uuid VARCHAR(36) UNIQUE NOT NULL,
+  afiliado_id INT NOT NULL,
+  camping_id INT NOT NULL,
+  periodo_caja_id INT NULL,
+  usuario_registro_id INT NOT NULL,
+  fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  fecha_egreso TIMESTAMP NULL,
+  acompanantes JSON,
+  observaciones TEXT,
+  sincronizado BOOLEAN DEFAULT TRUE,
+  registro_offline BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (afiliado_id) REFERENCES afiliados(id),
+  FOREIGN KEY (camping_id) REFERENCES campings(id),
+  FOREIGN KEY (periodo_caja_id) REFERENCES periodos_caja(id) ON DELETE SET NULL,
+  FOREIGN KEY (usuario_registro_id) REFERENCES usuarios(id),
+  INDEX idx_afiliado (afiliado_id),
+  INDEX idx_camping_fecha (camping_id, fecha_ingreso),
+  INDEX idx_uuid (uuid),
+  INDEX idx_sincronizado (sincronizado),
+  INDEX idx_periodo (periodo_caja_id),
+  INDEX idx_fecha_ingreso (fecha_ingreso)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Logs de Sincronización
+-- ============================================
+CREATE TABLE sync_logs (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  usuario_id INT NOT NULL,
+  camping_id INT NULL,
+  tipo ENUM('visita', 'egreso', 'cierre_caja', 'batch', 'padron') NOT NULL,
+  registros_sincronizados INT DEFAULT 0,
+  fecha_sync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  estado ENUM('success', 'partial', 'failed') DEFAULT 'success',
+  errores JSON,
+  detalles JSON,
+  
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+  FOREIGN KEY (camping_id) REFERENCES campings(id),
+  INDEX idx_usuario_fecha (usuario_id, fecha_sync),
+  INDEX idx_camping_fecha (camping_id, fecha_sync),
+  INDEX idx_tipo (tipo),
+  INDEX idx_estado (estado)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Auditoría de Padrón
+-- ============================================
+CREATE TABLE auditoria_padron (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  usuario_id INT NOT NULL,
+  accion ENUM('INSERT', 'UPDATE', 'DELETE', 'IMPORT') NOT NULL,
+  tabla VARCHAR(50) NOT NULL,
+  registro_id INT NOT NULL,
+  datos_anteriores JSON,
+  datos_nuevos JSON,
+  ip_address VARCHAR(45),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+  INDEX idx_usuario (usuario_id),
+  INDEX idx_tabla_registro (tabla, registro_id),
+  INDEX idx_fecha (created_at),
+  INDEX idx_accion (accion)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- TABLA: Configuración del Sistema
+-- ============================================
+CREATE TABLE configuracion_sistema (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  clave VARCHAR(100) UNIQUE NOT NULL,
+  valor TEXT,
+  tipo ENUM('string', 'number', 'boolean', 'json') DEFAULT 'string',
+  descripcion TEXT,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  INDEX idx_clave (clave)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- PROCEDIMIENTOS ALMACENADOS
+-- ============================================
+
+-- ============================================
+-- SP: Obtener versión actual del padrón
+-- ============================================
+DELIMITER $$
+
+CREATE PROCEDURE sp_obtener_version_padron_actual()
+BEGIN
+  SELECT 
+    id,
+    version,
+    fecha_actualizacion,
+    total_afiliados,
+    total_familiares,
+    hash_checksum
+  FROM padron_versiones
+  WHERE activo = TRUE
+  ORDER BY fecha_actualizacion DESC
+  LIMIT 1;
+END$$
+
+-- ============================================
+-- SP: Buscar afiliado (múltiples criterios)
+-- ============================================
+CREATE PROCEDURE sp_buscar_afiliado(
+  IN p_criterio VARCHAR(100),
+  IN p_tipo ENUM('dni', 'apellido', 'general'),
+  IN p_limit INT
+)
+BEGIN
+  SET p_limit = IFNULL(p_limit, 20);
+  
+  IF p_tipo = 'dni' THEN
+    SELECT 
+      a.*,
+      (SELECT COUNT(*) FROM familiares f WHERE f.afiliado_id = a.id AND f.activo = TRUE) as total_familiares
+    FROM afiliados a
+    WHERE (a.dni = p_criterio OR a. cuil LIKE CONCAT('%', p_criterio, '%'))
+      AND a.activo = TRUE
+    LIMIT p_limit;
+    
+  ELSEIF p_tipo = 'apellido' THEN
+    SELECT 
+      a.*,
+      (SELECT COUNT(*) FROM familiares f WHERE f.afiliado_id = a.id AND f.activo = TRUE) as total_familiares
+    FROM afiliados a
+    WHERE a.apellido LIKE CONCAT(UPPER(p_criterio), '%')
+      AND a.activo = TRUE
+    ORDER BY a.apellido, a.nombres
+    LIMIT p_limit;
+    
+  ELSE  -- general (fulltext)
+    SELECT 
+      a.*,
+      MATCH(a.apellido, a.nombres, a.dni) AGAINST(p_criterio IN BOOLEAN MODE) as score,
+      (SELECT COUNT(*) FROM familiares f WHERE f.afiliado_id = a.id AND f.activo = TRUE) as total_familiares
+    FROM afiliados a
+    WHERE MATCH(a.apellido, a.nombres, a.dni) AGAINST(p_criterio IN BOOLEAN MODE)
+      AND a.activo = TRUE
+    ORDER BY score DESC
+    LIMIT p_limit;
+  END IF;
+END$$
+
+-- ============================================
+-- SP: Obtener afiliado completo (con familiares)
+-- ============================================
+CREATE PROCEDURE sp_obtener_afiliado_completo(
+  IN p_afiliado_id INT
+)
+BEGIN
+  -- Datos del afiliado
+  SELECT * FROM afiliados WHERE id = p_afiliado_id AND activo = TRUE;
+  
+  -- Familiares activos
+  SELECT * FROM familiares 
+  WHERE afiliado_id = p_afiliado_id 
+    AND activo = TRUE 
+    AND baja = FALSE
+  ORDER BY edad DESC;
+END$$
+
+-- ============================================
+-- SP: Registrar visita
+-- ============================================
+CREATE PROCEDURE sp_registrar_visita(
+  IN p_uuid VARCHAR(36),
+  IN p_afiliado_id INT,
+  IN p_camping_id INT,
+  IN p_usuario_id INT,
+  IN p_periodo_caja_id INT,
+  IN p_acompanantes JSON,
+  IN p_observaciones TEXT,
+  IN p_registro_offline BOOLEAN,
+  OUT p_visita_id INT
+)
+BEGIN
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET p_visita_id = -1;
+  END;
+  
+  START TRANSACTION;
+  
+  -- Insertar visita
+  INSERT INTO visitas (
+    uuid, afiliado_id, camping_id, periodo_caja_id,
+    usuario_registro_id, acompanantes, observaciones,
+    registro_offline, sincronizado
+  ) VALUES (
+    p_uuid, p_afiliado_id, p_camping_id, p_periodo_caja_id,
+    p_usuario_id, p_acompanantes, p_observaciones,
+    p_registro_offline, NOT p_registro_offline
+  );
+  
+  SET p_visita_id = LAST_INSERT_ID();
+  
+  -- Actualizar contador del período de caja
+  IF p_periodo_caja_id IS NOT NULL THEN
+    UPDATE periodos_caja 
+    SET total_visitas = total_visitas + 1
+    WHERE id = p_periodo_caja_id;
+  END IF;
+  
+  COMMIT;
+END$$
+
+-- ============================================
+-- SP: Sincronizar visitas offline
+-- ============================================
+CREATE PROCEDURE sp_sincronizar_visitas_offline(
+  IN p_visitas_json JSON,
+  IN p_usuario_id INT,
+  IN p_camping_id INT,
+  OUT p_sincronizadas INT,
+  OUT p_errores INT
+)
+BEGIN
+  DECLARE v_count INT DEFAULT 0;
+  DECLARE v_total INT;
+  DECLARE v_uuid VARCHAR(36);
+  DECLARE v_afiliado_id INT;
+  DECLARE v_periodo_caja_id INT;
+  DECLARE v_acompanantes JSON;
+  DECLARE v_observaciones TEXT;
+  DECLARE v_fecha_ingreso TIMESTAMP;
+  DECLARE v_existe INT;
+  
+  SET p_sincronizadas = 0;
+  SET p_errores = 0;
+  SET v_total = JSON_LENGTH(p_visitas_json);
+  
+  WHILE v_count < v_total DO
+    -- Extraer datos del JSON
+    SET v_uuid = JSON_UNQUOTE(JSON_EXTRACT(p_visitas_json, CONCAT('$[', v_count, ']. uuid')));
+    SET v_afiliado_id = JSON_EXTRACT(p_visitas_json, CONCAT('$[', v_count, '].afiliadoId'));
+    SET v_periodo_caja_id = JSON_EXTRACT(p_visitas_json, CONCAT('$[', v_count, '].periodoCajaId'));
+    SET v_acompanantes = JSON_EXTRACT(p_visitas_json, CONCAT('$[', v_count, '].acompanantes'));
+    SET v_observaciones = JSON_UNQUOTE(JSON_EXTRACT(p_visitas_json, CONCAT('$[', v_count, '].observaciones')));
+    SET v_fecha_ingreso = JSON_UNQUOTE(JSON_EXTRACT(p_visitas_json, CONCAT('$[', v_count, '].fechaIngreso')));
+    
+    -- Verificar si ya existe
+    SELECT COUNT(*) INTO v_existe FROM visitas WHERE uuid = v_uuid;
+    
+    IF v_existe = 0 THEN
+      BEGIN
+        DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+        BEGIN
+          SET p_errores = p_errores + 1;
+        END;
+        
+        INSERT INTO visitas (
+          uuid, afiliado_id, camping_id, periodo_caja_id,
+          usuario_registro_id, fecha_ingreso, acompanantes,
+          observaciones, registro_offline, sincronizado
+        ) VALUES (
+          v_uuid, v_afiliado_id, p_camping_id, v_periodo_caja_id,
+          p_usuario_id, v_fecha_ingreso, v_acompanantes,
+          v_observaciones, TRUE, TRUE
+        );
+        
+        SET p_sincronizadas = p_sincronizadas + 1;
+        
+        -- Actualizar período de caja
+        IF v_periodo_caja_id IS NOT NULL THEN
+          UPDATE periodos_caja 
+          SET total_visitas = total_visitas + 1
+          WHERE id = v_periodo_caja_id;
+        END IF;
+      END;
+    END IF;
+    
+    SET v_count = v_count + 1;
+  END WHILE;
+  
+  -- Registrar log de sincronización
+  INSERT INTO sync_logs (
+    usuario_id, camping_id, tipo, registros_sincronizados,
+    estado, detalles
+  ) VALUES (
+    p_usuario_id, p_camping_id, 'batch', p_sincronizadas,
+    IF(p_errores = 0, 'success', IF(p_sincronizadas > 0, 'partial', 'failed')),
+    JSON_OBJECT('total', v_total, 'sincronizadas', p_sincronizadas, 'errores', p_errores)
+  );
+END$$
+
+-- ============================================
+-- SP: Obtener visitas del día por camping
+-- ============================================
+CREATE PROCEDURE sp_obtener_visitas_dia(
+  IN p_camping_id INT,
+  IN p_fecha DATE
+)
+BEGIN
+  SELECT 
+    v.*,
+    a.dni,
+    a.apellido,
+    a.nombres,
+    a.situacion_sindicato,
+    a.situacion_obra_social,
+    u.username as usuario_registro
+  FROM visitas v
+  INNER JOIN afiliados a ON v.afiliado_id = a.id
+  INNER JOIN usuarios u ON v.usuario_registro_id = u.id
+  WHERE v.camping_id = p_camping_id
+    AND DATE(v.fecha_ingreso) = p_fecha
+  ORDER BY v.fecha_ingreso DESC;
+END$$
+
+-- ============================================
+-- SP: Cerrar período de caja
+-- ============================================
+CREATE PROCEDURE sp_cerrar_periodo_caja(
+  IN p_periodo_id INT,
+  IN p_usuario_cierre_id INT,
+  IN p_observaciones TEXT,
+  OUT p_resultado VARCHAR(50)
+)
+BEGIN
+  DECLARE v_pendientes INT;
+  
+  -- Verificar visitas pendientes de sincronización
+  SELECT COUNT(*) INTO v_pendientes
+  FROM visitas
+  WHERE periodo_caja_id = p_periodo_id
+    AND sincronizado = FALSE;
+  
+  IF v_pendientes > 0 THEN
+    SET p_resultado = 'ERROR_PENDIENTES';
+  ELSE
+    UPDATE periodos_caja
+    SET 
+      fecha_cierre = NOW(),
+      usuario_cierre_id = p_usuario_cierre_id,
+      observaciones = p_observaciones,
+      activo = FALSE
+    WHERE id = p_periodo_id;
+    
+    SET p_resultado = 'SUCCESS';
+  END IF;
+END$$
+
+-- ============================================
+-- SP: Estadísticas del camping
+-- ============================================
+CREATE PROCEDURE sp_estadisticas_camping(
+  IN p_camping_id INT,
+  IN p_fecha_desde DATE,
+  IN p_fecha_hasta DATE
+)
+BEGIN
+  -- Total de visitas
+  SELECT 
+    COUNT(*) as total_visitas,
+    COUNT(DISTINCT afiliado_id) as afiliados_unicos,
+    COUNT(DISTINCT DATE(fecha_ingreso)) as dias_operacion,
+    AVG(JSON_LENGTH(acompanantes)) as promedio_acompanantes
+  FROM visitas
+  WHERE camping_id = p_camping_id
+    AND DATE(fecha_ingreso) BETWEEN p_fecha_desde AND p_fecha_hasta;
+  
+  -- Visitas por día
+  SELECT 
+    DATE(fecha_ingreso) as fecha,
+    COUNT(*) as total_visitas,
+    COUNT(DISTINCT afiliado_id) as afiliados_distintos
+  FROM visitas
+  WHERE camping_id = p_camping_id
+    AND DATE(fecha_ingreso) BETWEEN p_fecha_desde AND p_fecha_hasta
+  GROUP BY DATE(fecha_ingreso)
+  ORDER BY fecha DESC;
+END$$
+
+DELIMITER ;
+
+-- ============================================
+-- TRIGGERS
+-- ============================================
+
+-- Trigger: Actualizar timestamp de último acceso
+DELIMITER $$
+
+CREATE TRIGGER tr_usuario_ultimo_acceso
+BEFORE UPDATE ON usuarios
+FOR EACH ROW
+BEGIN
+  IF NEW.ultimo_acceso IS NOT NULL AND NEW.ultimo_acceso != OLD.ultimo_acceso THEN
+    SET NEW.updated_at = CURRENT_TIMESTAMP;
+  END IF;
+END$$
+
+DELIMITER ;
+
+-- ============================================
+-- DATOS INICIALES (SEED)
+-- ============================================
+
+-- Roles del sistema
+INSERT INTO roles (nombre, descripcion, permisos) VALUES
+('admin', 'Administrador del sistema', JSON_ARRAY('all')),
+('camping', 'Responsable de camping', JSON_ARRAY('read:afiliados', 'create:visitas', 'read:visitas', 'create:periodo', 'close:periodo')),
+('afiliado', 'Afiliado del sindicato', JSON_ARRAY('read:own', 'read:qr'));
+
+-- Usuario genérico offline
+-- Password: "offline123" (cambiar en producción)
+INSERT INTO usuarios (username, password_hash, email, activo) VALUES
+('offline_generic', '$2b$10$92IXUNpkjO0rOQ5byMi. Ye4oKoEa3Ro9llC/.og/at2. uheWG/igi', 'offline@sistema.local', TRUE);
+
+-- Asignar rol camping al usuario offline
+INSERT INTO usuario_roles (usuario_id, rol_id, activo) VALUES
+(1, 2, TRUE);
+
+-- Usuario administrador
+-- Password: "admin123" (cambiar en producción)
+INSERT INTO usuarios (username, password_hash, email, activo) VALUES
+('admin', '$2b$10$K5Z.PwXJ7h8FqX4KjE9O7.xQZ9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9Z9. ', 'admin@smata.org. ar', TRUE);
+
+INSERT INTO usuario_roles (usuario_id, rol_id, activo) VALUES
+(2, 1, TRUE);
+
+-- Campings de ejemplo
+INSERT INTO campings (nombre, ubicacion, provincia, localidad, telefono, activo) VALUES
+('Camping Los Pinos', 'Ruta 38 Km 45', 'Córdoba', 'Villa Carlos Paz', '3541-123456', TRUE),
+('Camping El Río', 'Av. Costanera 200', 'Córdoba', 'La Falda', '3548-987654', TRUE),
+('Camping Las Sierras', 'Camino al Dique s/n', 'Córdoba', 'Santa Rosa de Calamuchita', '3546-445566', TRUE);
+
+-- Configuración del sistema
+INSERT INTO configuracion_sistema (clave, valor, tipo, descripcion) VALUES
+('padron_version_actual', '1.0.0', 'string', 'Versión actual del padrón de afiliados'),
+('sync_interval_seconds', '300', 'number', 'Intervalo de sincronización automática en segundos'),
+('cache_expiration_hours', '24', 'number', 'Tiempo de expiración del cache local en horas'),
+('offline_mode_enabled', 'true', 'boolean', 'Habilitar modo offline'),
+('qr_expiration_days', '365', 'number', 'Días de validez del código QR');
+
+-- ============================================
+-- VISTAS ÚTILES
+-- ============================================
+
+-- Vista: Afiliados activos con conteo de familiares
+CREATE VIEW v_afiliados_activos AS
+SELECT 
+  a.*,
+  COUNT(f.id) as total_familiares,
+  COUNT(CASE WHEN f.baja = FALSE THEN 1 END) as familiares_activos
+FROM afiliados a
+LEFT JOIN familiares f ON a.id = f.afiliado_id AND f.activo = TRUE
+WHERE a.activo = TRUE
+GROUP BY a.id;
+
+-- Vista: Resumen de visitas del día actual
+CREATE VIEW v_visitas_hoy AS
+SELECT 
+  c.nombre as camping,
+  COUNT(v.id) as total_visitas,
+  COUNT(DISTINCT v.afiliado_id) as afiliados_distintos,
+  MIN(v.fecha_ingreso) as primera_visita,
+  MAX(v.fecha_ingreso) as ultima_visita
+FROM visitas v
+INNER JOIN campings c ON v.camping_id = c.id
+WHERE DATE(v.fecha_ingreso) = CURDATE()
+GROUP BY v.camping_id, c.nombre;
+
+-- Vista: Usuarios con sus roles y campings
+CREATE VIEW v_usuarios_completos AS
+SELECT 
+  u.id,
+  u.username,
+  u.email,
+  u.activo,
+  u.ultimo_acceso,
+  a.dni as afiliado_dni,
+  CONCAT(a.apellido, ', ', a.nombres) as afiliado_nombre,
+  GROUP_CONCAT(DISTINCT r.nombre) as roles,
+  GROUP_CONCAT(DISTINCT c.nombre) as campings
+FROM usuarios u
+LEFT JOIN afiliados a ON u.afiliado_id = a.id
+LEFT JOIN usuario_roles ur ON u.id = ur.usuario_id AND ur.activo = TRUE
+LEFT JOIN roles r ON ur.rol_id = r.id
+LEFT JOIN campings c ON ur.camping_id = c.id
+GROUP BY u.id;
+
+-- ============================================
+-- ÍNDICES ADICIONALES PARA OPTIMIZACIÓN
+-- ============================================
+
+-- Índice compuesto para búsquedas frecuentes
+CREATE INDEX idx_afiliados_busqueda ON afiliados(activo, situacion_sindicato, apellido);
+CREATE INDEX idx_visitas_camping_fecha_sync ON visitas(camping_id, fecha_ingreso, sincronizado);
+CREATE INDEX idx_familiares_afiliado_baja ON familiares(afiliado_id, baja, activo);
+
+-- ============================================
+-- FIN DEL SCRIPT
+-- ============================================
+
+-- Verificación de la estructura
+SELECT 'Base de datos creada exitosamente' as mensaje;
+SELECT COUNT(*) as total_tablas FROM information_schema.tables WHERE table_schema = 'camping_smata';
+SELECT table_name FROM information_schema.tables WHERE table_schema = 'camping_smata' ORDER BY table_name;
+
+
+
+
+ALTER TABLE afiliados 
+  MODIFY COLUMN situacion_sindicato ENUM('ACTIVO', 'BAJA') DEFAULT 'ACTIVO',
+  MODIFY COLUMN situacion_obra_social ENUM('ACTIVO', 'BAJA') DEFAULT 'ACTIVO';
+
+-- ============================================
+-- Verificar cambio
+-- ============================================
+DESCRIBE afiliados;
+
+
+
+
+USE camping_smata;
+
+-- ============================================
+-- 1. Crear versión del padrón de prueba
+-- ============================================
+INSERT INTO padron_versiones (version, fecha_actualizacion, descripcion, activo) 
+VALUES ('2025-01-PRUEBA', NOW(), 'Padrón de prueba con 5 afiliados', TRUE);
+
+SET @padron_version_id = LAST_INSERT_ID();
+
+-- Desactivar versiones anteriores
+UPDATE padron_versiones SET activo = FALSE WHERE id != @padron_version_id;
+
+-- ============================================
+-- 2.  Insertar los 5 afiliados
+-- ============================================
+
+-- AFILIADO 1: GABRIEL OSCAR ANDRADA
+INSERT INTO afiliados (
+  cuil, dni, apellido, nombres, sexo,
+  tipo_afiliado, fecha_nacimiento, categoria,
+  domicilio, provincia, localidad, codigo_postal,
+  telefono, email, grupo_sanguineo,
+  situacion_sindicato, situacion_obra_social,
+  padron_version_id, activo
+) VALUES (
+  '20332516540', '33251654', 'ANDRADA', 'GABRIEL OSCAR', 'M',
+  'SMATA y OSMATA', '1987-09-12', 'TRABAJANDO, APORTA POR DGI',
+  'AV.RENAULT 1020', 'Córdoba', 'CORDOBA', '5020',
+  '', '', '? ',
+  'ACTIVO', 'ACTIVO',
+  @padron_version_id, TRUE
+);
+
+SET @afiliado1_id = LAST_INSERT_ID();
+
+-- AFILIADO 2: MARIO A.  MACALUSO
+INSERT INTO afiliados (
+  cuil, dni, apellido, nombres, sexo,
+  tipo_afiliado, fecha_nacimiento, categoria,
+  domicilio, provincia, localidad, codigo_postal,
+  telefono, email, grupo_sanguineo,
+  situacion_sindicato, situacion_obra_social,
+  padron_version_id, activo
+) VALUES (
+  '20332700287', '33270028', 'MACALUSO', 'MARIO A.', 'M',
+  'SMATA', '1987-09-08', 'TRABAJANDO, APORTA POR DGI',
+  'RUTA NAC. 9 0695', 'Córdoba', 'FERREYRA', '5006',
+  '0351155050248', 'andresmacalusom@gmail.com', '?',
+  'ACTIVO', 'BAJA',
+  @padron_version_id, TRUE
+);
+
+SET @afiliado2_id = LAST_INSERT_ID();
+
+-- AFILIADO 3: JESUS ANGEL ROMERO
+INSERT INTO afiliados (
+  cuil, dni, apellido, nombres, sexo,
+  tipo_afiliado, fecha_nacimiento, categoria,
+  domicilio, provincia, localidad, codigo_postal,
+  telefono, email, grupo_sanguineo,
+  situacion_sindicato, situacion_obra_social,
+  padron_version_id, activo
+) VALUES (
+  '20332704770', '33270477', 'ROMERO', 'JESUS ANGEL', 'M',
+  'SMATA y OSMATA', '1987-08-30', 'TRABAJANDO, APORTA POR DGI',
+  'AV LA VOZ DEL INTERIOR 6926', 'Córdoba', 'B.L.BOULEVARES', '5000',
+  '03416813475', '', '?',
+  'ACTIVO', 'ACTIVO',
+  @padron_version_id, TRUE
+);
+
+SET @afiliado3_id = LAST_INSERT_ID();
+
+-- AFILIADO 4: ANDRES FRANCISCO FRIDLMEIER
+INSERT INTO afiliados (
+  cuil, dni, apellido, nombres, sexo,
+  tipo_afiliado, fecha_nacimiento, categoria,
+  domicilio, provincia, localidad, codigo_postal,
+  telefono, email, grupo_sanguineo,
+  situacion_sindicato, situacion_obra_social,
+  padron_version_id, activo
+) VALUES (
+  '20332856244', '33285624', 'FRIDLMEIER', 'ANDRES FRANCISCO', 'M',
+  'SMATA', '1987-10-26', 'TRABAJANDO, APORTA POR DGI',
+  'AV. RENAULT 1020', 'Córdoba', 'CORDOBA', '5000',
+  '', 'andresfrid@gmail.com', '?',
+  'ACTIVO', 'BAJA',
+  @padron_version_id, TRUE
+);
+
+SET @afiliado4_id = LAST_INSERT_ID();
+
+-- AFILIADO 5: HUMBERTO MARTIN ROLDAN
+INSERT INTO afiliados (
+  cuil, dni, apellido, nombres, sexo,
+  tipo_afiliado, fecha_nacimiento, categoria,
+  domicilio, provincia, localidad, codigo_postal,
+  telefono, email, grupo_sanguineo,
+  situacion_sindicato, situacion_obra_social,
+  padron_version_id, activo
+) VALUES (
+  '20332857615', '33285761', 'ROLDAN', 'HUMBERTO MARTIN', 'M',
+  'SMATA', '1987-12-02', 'TRABAJANDO, APORTA POR DGI',
+  'RUTA 9 KM. 695 0000', 'Córdoba', 'FERREYRA', '5166',
+  '00000', 'martinroldan1987@gmail.com', '?',
+  'ACTIVO', 'BAJA',
+  @padron_version_id, TRUE
+);
+
+SET @afiliado5_id = LAST_INSERT_ID();
+
+-- ============================================
+-- 3. Generar QR codes para los afiliados
+-- ============================================
+UPDATE afiliados 
+SET qr_code = CONCAT('AFILIADO-', id, '-', dni)
+WHERE padron_version_id = @padron_version_id;
+
+-- ============================================
+-- 4.  Insertar familiares
+-- ============================================
+
+-- Familiares de MACALUSO (afiliado 2)
+INSERT INTO familiares (afiliado_id, nombre, dni, edad, estudia, discapacitado, baja, activo) VALUES
+(@afiliado2_id, 'EMILIA AZUL MACALUSO', '70241475', 1, FALSE, FALSE, FALSE, TRUE),
+(@afiliado2_id, 'EMMA ANTONELLA MACALUSO', '56979939', 7, FALSE, FALSE, FALSE, TRUE),
+(@afiliado2_id, 'SILVINA E. REQUENA', '36239085', 34, FALSE, FALSE, FALSE, TRUE);
+
+-- Familiar de FRIDLMEIER (afiliado 4)
+INSERT INTO familiares (afiliado_id, nombre, dni, edad, estudia, discapacitado, baja, activo) VALUES
+(@afiliado4_id, 'MAXIMO FRIDLMEIER', '57528158', 6, FALSE, FALSE, FALSE, TRUE);
+
+-- Familiares de ROLDAN (afiliado 5)
+INSERT INTO familiares (afiliado_id, nombre, dni, edad, estudia, discapacitado, baja, activo) VALUES
+(@afiliado5_id, 'MARIA BELEN ARCH', '35018277', 35, FALSE, FALSE, FALSE, TRUE),
+(@afiliado5_id, 'JAZMIN V. ROLDAN ARCH', '48720912', 16, FALSE, FALSE, FALSE, TRUE),
+(@afiliado5_id, 'SANTIAGO JEREMIAS ROLDAN ARCH', '55523449', 9, FALSE, FALSE, FALSE, TRUE);
+
+-- ============================================
+-- 5. Generar QR codes para familiares
+-- ============================================
+UPDATE familiares 
+SET qr_code = CONCAT('FAMILIAR-', id, '-', dni)
+WHERE qr_code IS NULL AND dni IS NOT NULL;
+
+-- ============================================
+-- 6. Crear usuarios para cada afiliado
+-- Password temporal para TODOS: "smata2024"
+-- Hash: $2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW
+-- ============================================
+
+-- Usuario para ANDRADA (username = DNI)
+INSERT INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33251654', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', '', @afiliado1_id, TRUE);
+INSERT INTO usuario_roles (usuario_id, rol_id, activo) VALUES (LAST_INSERT_ID(), 3, TRUE);
+
+-- Usuario para MACALUSO
+INSERT INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33270028', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 'andresmacalusom@gmail.com', @afiliado2_id, TRUE);
+INSERT INTO usuario_roles (usuario_id, rol_id, activo) VALUES (LAST_INSERT_ID(), 3, TRUE);
+
+-- Usuario para ROMERO
+INSERT INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33270477', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', '', @afiliado3_id, TRUE);
+INSERT INTO usuario_roles (usuario_id, rol_id, activo) VALUES (LAST_INSERT_ID(), 3, TRUE);
+
+-- Usuario para FRIDLMEIER
+INSERT INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33285624', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 'andresfrid@gmail.com', @afiliado4_id, TRUE);
+INSERT INTO usuario_roles (usuario_id, rol_id, activo) VALUES (LAST_INSERT_ID(), 3, TRUE);
+
+-- Usuario para ROLDAN
+INSERT INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33285761', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 'martinroldan1987@gmail.com', @afiliado5_id, TRUE);
+
+USE camping_smata;
+
+-- ============================================
+-- 1. Verificar si existen los roles
+-- ============================================
+SELECT * FROM roles;
+
+-- Si NO aparecen roles (tabla vacía), ejecutar esto:
+INSERT INTO roles (nombre, descripcion, permisos) VALUES
+('admin', 'Administrador del sistema', JSON_ARRAY('all')),
+('camping', 'Responsable de camping', JSON_ARRAY('read:afiliados', 'create:visitas', 'read:visitas', 'create:periodo', 'close:periodo')),
+('afiliado', 'Afiliado del sindicato', JSON_ARRAY('read:own', 'read:qr'));
+
+-- Verificar de nuevo
+SELECT * FROM roles;
+
+-- ============================================
+-- 2. Ahora SÍ completar la inserción de usuarios
+-- (Ya tienes los afiliados y familiares, solo faltan los usuarios)
+-- ============================================
+
+-- Obtener los IDs de los afiliados recién creados
+SELECT @afiliado1_id := id FROM afiliados WHERE dni = '33251654';
+SELECT @afiliado2_id := id FROM afiliados WHERE dni = '33270028';
+SELECT @afiliado3_id := id FROM afiliados WHERE dni = '33270477';
+SELECT @afiliado4_id := id FROM afiliados WHERE dni = '33285624';
+SELECT @afiliado5_id := id FROM afiliados WHERE dni = '33285761';
+
+-- Ahora crear los usuarios (si no se crearon antes)
+-- Usuario 1: ANDRADA
+INSERT IGNORE INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33251654', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', '', @afiliado1_id, TRUE);
+INSERT IGNORE INTO usuario_roles (usuario_id, rol_id, activo) 
+VALUES ((SELECT id FROM usuarios WHERE username = '33251654'), 3, TRUE);
+
+-- Usuario 2: MACALUSO
+INSERT IGNORE INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33270028', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 'andresmacalusom@gmail.com', @afiliado2_id, TRUE);
+INSERT IGNORE INTO usuario_roles (usuario_id, rol_id, activo) 
+VALUES ((SELECT id FROM usuarios WHERE username = '33270028'), 3, TRUE);
+
+-- Usuario 3: ROMERO
+INSERT IGNORE INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33270477', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', '', @afiliado3_id, TRUE);
+INSERT IGNORE INTO usuario_roles (usuario_id, rol_id, activo) 
+VALUES ((SELECT id FROM usuarios WHERE username = '33270477'), 3, TRUE);
+
+-- Usuario 4: FRIDLMEIER
+INSERT IGNORE INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33285624', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 'andresfrid@gmail.com', @afiliado4_id, TRUE);
+INSERT IGNORE INTO usuario_roles (usuario_id, rol_id, activo) 
+VALUES ((SELECT id FROM usuarios WHERE username = '33285624'), 3, TRUE);
+
+-- Usuario 5: ROLDAN
+INSERT IGNORE INTO usuarios (username, password_hash, email, afiliado_id, activo) VALUES
+('33285761', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 'martinroldan1987@gmail.com', @afiliado5_id, TRUE);
+INSERT IGNORE INTO usuario_roles (usuario_id, rol_id, activo) 
+VALUES ((SELECT id FROM usuarios WHERE username = '33285761'), 3, TRUE);
+
+-- ============================================
+-- 3. Insertar usuarios base (admin y offline) si no existen
+-- ============================================
+INSERT IGNORE INTO usuarios (username, password_hash, email, activo) VALUES
+('admin', '$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 'admin@smata.org. ar', TRUE);
+INSERT IGNORE INTO usuario_roles (usuario_id, rol_id, activo) 
+VALUES ((SELECT id FROM usuarios WHERE username = 'admin'), 1, TRUE);
+
+INSERT IGNORE INTO usuarios (username, password_hash, email, activo) VALUES
+('offline_generic', '$2b$10$92IXUNpkjO0rOQ5byMi. Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'offline@sistema.local', TRUE);
+INSERT IGNORE INTO usuario_roles (usuario_id, rol_id, activo) 
+VALUES ((SELECT id FROM usuarios WHERE username = 'offline_generic'), 2, TRUE);
+
+-- ============================================
+-- 4. Insertar campings si no existen
+-- ============================================
+INSERT IGNORE INTO campings (nombre, ubicacion, provincia, localidad, telefono, activo) VALUES
+('Camping Los Pinos', 'Ruta 38 Km 45', 'Córdoba', 'Villa Carlos Paz', '3541-123456', TRUE),
+('Camping El Río', 'Av. Costanera 200', 'Córdoba', 'La Falda', '3548-987654', TRUE),
+('Camping Las Sierras', 'Camino al Dique s/n', 'Córdoba', 'Santa Rosa de Calamuchita', '3546-445566', TRUE);
+
+-- ============================================
+-- 5. Insertar configuración si no existe
+-- ============================================
+INSERT IGNORE INTO configuracion_sistema (clave, valor, tipo, descripcion) VALUES
+('padron_version_actual', '1.0.0', 'string', 'Versión actual del padrón de afiliados'),
+('sync_interval_seconds', '300', 'number', 'Intervalo de sincronización automática en segundos'),
+('cache_expiration_hours', '24', 'number', 'Tiempo de expiración del cache local en horas'),
+('offline_mode_enabled', 'true', 'boolean', 'Habilitar modo offline'),
+('qr_expiration_days', '365', 'number', 'Días de validez del código QR');
+
+-- ============================================
+-- 6. Actualizar totales del padrón
+-- ============================================
+UPDATE padron_versiones 
+SET 
+  total_afiliados = (SELECT COUNT(*) FROM afiliados WHERE padron_version_id = id),
+  total_familiares = (SELECT COUNT(*) FROM familiares f INNER JOIN afiliados a ON f.afiliado_id = a.id WHERE a.padron_version_id = padron_versiones.id)
+WHERE version = '2025-01-PRUEBA';
+
+-- ============================================
+-- 7.  VERIFICACIÓN COMPLETA
+-- ============================================
+
+SELECT '✅ BASE DE DATOS COMPLETA' as estado;
+
+SELECT '--- ROLES ---' as seccion;
+SELECT * FROM roles;
+
+SELECT '--- AFILIADOS ---' as seccion;
+SELECT 
+  id, dni, 
+  CONCAT(apellido, ', ', nombres) as nombre,
+  situacion_sindicato, 
+  situacion_obra_social,
+  LEFT(qr_code, 30) as qr
+FROM afiliados 
+ORDER BY apellido;
+
+SELECT '--- FAMILIARES ---' as seccion;
+SELECT 
+  f.id,
+  CONCAT(a.apellido, ', ', a. nombres) as titular,
+  f.nombre as familiar,
+  f.dni,
+  f.edad,
+  LEFT(f.qr_code, 30) as qr
+FROM familiares f
+INNER JOIN afiliados a ON f.afiliado_id = a.id
+ORDER BY a.apellido, f.edad DESC;
+
+SELECT '--- USUARIOS ---' as seccion;
+SELECT 
+  u.id,
+  u.username,
+  IFNULL(CONCAT(a.apellido, ', ', a. nombres), 'Usuario del sistema') as nombre,
+  u.email,
+  GROUP_CONCAT(r.nombre) as roles,
+  u.activo
+FROM usuarios u
+LEFT JOIN afiliados a ON u.afiliado_id = a.id
+LEFT JOIN usuario_roles ur ON u.id = ur.usuario_id
+LEFT JOIN roles r ON ur.rol_id = r.id
+GROUP BY u.id
+ORDER BY u.id;
+
+SELECT '--- CAMPINGS ---' as seccion;
+SELECT * FROM campings;
+
+SELECT '--- PADRÓN ---' as seccion;
+SELECT * FROM padron_versiones;
+
+SELECT '--- RESUMEN FINAL ---' as seccion;
+SELECT 
+  (SELECT COUNT(*) FROM roles) as total_roles,
+  (SELECT COUNT(*) FROM afiliados) as total_afiliados,
+  (SELECT COUNT(*) FROM familiares) as total_familiares,
+  (SELECT COUNT(*) FROM usuarios) as total_usuarios,
+  (SELECT COUNT(*) FROM campings) as total_campings,
+  (SELECT COUNT(*) FROM configuracion_sistema) as config_items;
+
+-- ============================================
+-- CREDENCIALES DE ACCESO
+-- ============================================
+SELECT '--- CREDENCIALES PARA LOGIN ---' as seccion;
+SELECT 
+  'admin' as username,
+  'admin123' as password,
+  'Administrador' as rol
+UNION ALL
+SELECT 
+  'offline_generic' as username,
+  'offline123' as password,
+  'Camping (offline)' as rol
+UNION ALL
+SELECT 
+  u.username,
+  'smata2024' as password,
+  'Afiliado' as rol
+FROM usuarios u
+INNER JOIN afiliados a ON u.afiliado_id = a.id
+ORDER BY rol, username;
+
+*/
+
+/*
+-- ============================================
+-- 7.  Actualizar totales en la versión del padrón
+-- ============================================
+UPDATE padron_versiones 
+SET 
+  total_afiliados = (SELECT COUNT(*) FROM afiliados WHERE padron_version_id = @padron_version_id),
+  total_familiares = (SELECT COUNT(*) FROM familiares f INNER JOIN afiliados a ON f.afiliado_id = a.id WHERE a.padron_version_id = @padron_version_id)
+WHERE id = @padron_version_id;
+
+-- ============================================
+-- 8.  VERIFICAR DATOS INSERTADOS
+-- ============================================
+
+SELECT '✅ DATOS INSERTADOS CORRECTAMENTE' as mensaje;
+
+SELECT '--- RESUMEN DEL PADRÓN ---' as info;
+SELECT * FROM padron_versiones WHERE id = @padron_version_id;
+
+SELECT '--- AFILIADOS ---' as info;
+SELECT 
+  id, dni, CONCAT(apellido, ', ', nombres) as nombre_completo,
+  situacion_sindicato, situacion_obra_social,
+  qr_code
+FROM afiliados 
+WHERE padron_version_id = @padron_version_id;
+
+SELECT '--- FAMILIARES ---' as info;
+SELECT 
+  f.id, 
+  CONCAT(a.apellido, ', ', a. nombres) as titular,
+  f.nombre as familiar,
+  f.dni,
+  f.edad,
+  f.qr_code
+FROM familiares f
+INNER JOIN afiliados a ON f.afiliado_id = a.id
+WHERE a.padron_version_id = @padron_version_id;
+
+SELECT '--- USUARIOS CREADOS ---' as info;
+SELECT 
+  u.username as dni,
+  CONCAT(a.apellido, ', ', a. nombres) as nombre,
+  u.email,
+  'smata2024' as password_temporal,
+  u.activo
+FROM usuarios u
+INNER JOIN afiliados a ON u. afiliado_id = a. id
+WHERE a.padron_version_id = @padron_version_id;
+
+SELECT '--- TOTALES ---' as info;
+SELECT 
+  (SELECT COUNT(*) FROM afiliados WHERE padron_version_id = @padron_version_id) as total_afiliados,
+  (SELECT COUNT(*) FROM familiares f INNER JOIN afiliados a ON f.afiliado_id = a.id WHERE a.padron_version_id = @padron_version_id) as total_familiares,
+  (SELECT COUNT(*) FROM usuarios u INNER JOIN afiliados a ON u.afiliado_id = a.id WHERE a. padron_version_id = @padron_version_id) as total_usuarios;
+  
+ 
+  use camping_smata;
+  ALTER TABLE afiliados
+  ADD COLUMN empresa_cuit VARCHAR(11) NULL AFTER localidad,
+  ADD COLUMN empresa_nombre VARCHAR(200) NULL AFTER empresa_cuit;
+  
+select * from afiliados
+
+USE camping_smata;
+
+-- Ver columnas específicas
+SELECT COLUMN_NAME
+FROM information_schema.COLUMNS
+WHERE table_schema = 'camping_smata'
+  AND table_name = 'afiliados'
+  AND COLUMN_NAME IN ('empresa_cuit','empresa_nombre');
+
+
+  
+  
+  -- (Opcional) crear índice si no existe — verifica antes con el SELECT anterior
+CREATE INDEX idx_empresa_cuit ON afiliados(empresa_cuit);
+ */
+ 
+ 
+ USE camping_smata;
+
+UPDATE afiliados
+SET empresa_cuit = '30503317814',
+    empresa_nombre = 'RENAULT ARGENTINA S.A.'
+WHERE dni = '33251654';
+
+UPDATE afiliados
+SET empresa_cuit = '30585895268',
+    empresa_nombre = 'CNH INDUSTRIAL ARGENTINA S.A'
+WHERE dni = '33270028';
+
+UPDATE afiliados
+SET empresa_cuit = '30700480239',
+    empresa_nombre = 'RANDSTAD ARGENTINA S.A.'
+WHERE dni = '33270477';
+
+UPDATE afiliados
+SET empresa_cuit = '30503317814',
+    empresa_nombre = 'RENAULT ARGENTINA S.A.'
+WHERE dni = '33285624';
+
+UPDATE afiliados
+SET empresa_cuit = '30682450963',
+    empresa_nombre = 'FCA AUTOMOBILES ARG. S.A.'
+WHERE dni = '33285761';
+ 
+ 
+ 
+ SELECT dni, CONCAT(apellido, ', ', nombres) AS nombre, empresa_cuit, empresa_nombre
+FROM afiliados
+WHERE dni IN ('33251654','33270028','33270477','33285624','33285761');
+
+SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE
+FROM information_schema.STATISTICS
+WHERE table_schema = 'camping_smata' AND table_name = 'afiliados' AND COLUMN_NAME = 'empresa_cuit';

@@ -1,0 +1,319 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model afiliados {
+  id                    Int                         @id @default(autoincrement()) @map("id")
+  cuil                  String                      @unique(map: "cuil") @db.VarChar(11)
+  dni                   String                      @unique(map: "dni") @db.VarChar(8)
+  apellido              String                      @db.VarChar(100)
+  nombres               String                      @db.VarChar(100)
+  sexo                  sexo_enum
+  tipo_afiliado         String?                     @db.VarChar(50)
+  fecha_nacimiento      DateTime?                   @db.Date
+  categoria             String?                     @db.VarChar(100)
+  situacion_sindicato   situacion_sindicato_enum?   @default(ACTIVO)
+  situacion_obra_social situacion_obra_social_enum? @default(ACTIVO)
+  domicilio             String?                     @db.VarChar(255)
+  provincia             String?                     @db.VarChar(100)
+  localidad             String?                     @db.VarChar(100)
+  empresa_cuit          String?                     @db.VarChar(11)
+  empresa_nombre        String?                     @db.VarChar(200)
+  codigo_postal         String?                     @db.VarChar(10)
+  telefono              String?                     @db.VarChar(50)
+  email                 String?                     @db.VarChar(100)
+  grupo_sanguineo       String?                     @db.VarChar(5)
+  foto_url              String?                     @db.VarChar(255)
+  qr_code               String?                     @db.Text
+  padron_version_id     Int?
+  activo                Boolean?                    @default(true)
+  created_at            DateTime?                   @default(now()) @db.Timestamp(0)
+  updated_at            DateTime?                   @default(now()) @updatedAt @db.Timestamp(0)
+  PadronVersion         padron_versiones?           @relation(fields: [padron_version_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "afiliados_ibfk_1")
+  Familiares            familiares[]                @relation("titular")
+  Usuarios              usuarios[]                  @relation("afiliado_usuario")
+  Visitas               visitas[]                   @relation("afiliado_visita")
+
+  @@index([activo], map: "idx_activo")
+  @@index([apellido], map: "idx_apellido")
+  @@index([apellido, nombres], map: "idx_apellido_nombres")
+  @@index([cuil], map: "idx_cuil")
+  @@index([dni], map: "idx_dni")
+  @@index([empresa_cuit], map: "idx_empresa_cuit")
+  @@index([apellido, nombres, dni], map: "idx_fulltext_search")
+  @@index([nombres], map: "idx_nombres")
+  @@index([padron_version_id], map: "idx_padron_version")
+  @@index([situacion_sindicato], map: "idx_situacion_sindicato")
+  @@map("afiliados")
+}
+
+model familiares {
+  id               Int       @id @default(autoincrement())
+  afiliado_id      Int
+  nombre           String    @db.VarChar(200)
+  dni              String?   @db.VarChar(8)
+  fecha_nacimiento DateTime? @db.Date
+  edad             Int?
+  estudia          Boolean?  @default(false)
+  discapacitado    Boolean?  @default(false)
+  baja             Boolean?  @default(false)
+  qr_code          String?   @db.Text
+  activo           Boolean?  @default(true)
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  updated_at       DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  Afiliado         afiliados @relation("titular", fields: [afiliado_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "familiares_ibfk_1")
+
+  @@index([afiliado_id, activo], map: "idx_afiliado_activo")
+  @@index([afiliado_id], map: "idx_afiliado_id")
+  @@index([baja], map: "idx_baja")
+  @@index([dni], map: "idx_dni")
+  @@index([nombre], map: "idx_nombre")
+  @@map("familiares")
+}
+
+model usuarios {
+  id                 Int                @id @default(autoincrement())
+  username           String             @unique(map: "username") @db.VarChar(50)
+  password_hash      String             @db.VarChar(255)
+  email              String?            @db.VarChar(100)
+  afiliado_id        Int?
+  activo             Boolean?           @default(true)
+  ultimo_acceso      DateTime?          @db.Timestamp(0)
+  created_at         DateTime?          @default(now()) @db.Timestamp(0)
+  updated_at         DateTime?          @default(now()) @updatedAt @db.Timestamp(0)
+  AuditoriaPadron    auditoria_padron[]
+  PeriodosApertura   periodos_caja[]    @relation("usuario_apertura")
+  PeriodosCierre     periodos_caja[]    @relation("usuario_cierre")
+  SyncLogs           sync_logs[]
+  UsuarioRoles       usuario_roles[]
+  Afiliado           afiliados?         @relation("afiliado_usuario", fields: [afiliado_id], references: [id], onUpdate: NoAction, map: "usuarios_ibfk_1")
+  VisitasRegistradas visitas[]          @relation("usuario_registro")
+
+  @@index([activo], map: "idx_activo")
+  @@index([afiliado_id], map: "idx_afiliado")
+  @@index([username], map: "idx_username")
+  @@map("usuarios")
+}
+
+model roles {
+  id           Int             @id @default(autoincrement())
+  nombre       String          @unique(map: "nombre") @db.VarChar(50)
+  descripcion  String?         @db.Text
+  permisos     Json?
+  created_at   DateTime?       @default(now()) @db.Timestamp(0)
+  UsuarioRoles usuario_roles[]
+
+  @@map("roles")
+}
+
+model usuario_roles {
+  id               Int       @id @default(autoincrement())
+  usuario_id       Int
+  rol_id           Int
+  camping_id       Int?
+  activo           Boolean?  @default(true)
+  fecha_asignacion DateTime? @default(now()) @db.Timestamp(0)
+  Usuario          usuarios  @relation(fields: [usuario_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "usuario_roles_ibfk_1")
+  Role             roles     @relation(fields: [rol_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "usuario_roles_ibfk_2")
+  Camping          campings? @relation(fields: [camping_id], references: [id], onUpdate: NoAction, map: "usuario_roles_ibfk_3")
+
+  @@unique([usuario_id, rol_id, camping_id], map: "unique_usuario_rol_camping")
+  @@index([camping_id], map: "idx_camping")
+  @@index([rol_id], map: "idx_rol")
+  @@index([usuario_id], map: "idx_usuario")
+  @@map("usuario_roles")
+}
+
+model padron_versiones {
+  id                  Int         @id @default(autoincrement())
+  version             String      @unique(map: "version") @db.VarChar(50)
+  fecha_actualizacion DateTime    @db.Timestamp(0)
+  total_afiliados     Int?        @default(0)
+  total_familiares    Int?        @default(0)
+  descripcion         String?     @db.Text
+  hash_checksum       String?     @db.VarChar(64)
+  usuario_carga_id    Int?
+  activo              Boolean?    @default(true)
+  created_at          DateTime?   @default(now()) @db.Timestamp(0)
+  Afiliados           afiliados[]
+
+  @@index([activo], map: "idx_activo")
+  @@index([fecha_actualizacion], map: "idx_fecha")
+  @@index([version], map: "idx_version")
+  @@map("padron_versiones")
+}
+
+model campings {
+  id           Int             @id @default(autoincrement())
+  nombre       String          @db.VarChar(200)
+  ubicacion    String?         @db.VarChar(255)
+  provincia    String?         @db.VarChar(100)
+  localidad    String?         @db.VarChar(100)
+  telefono     String?         @db.VarChar(50)
+  email        String?         @db.VarChar(100)
+  activo       Boolean?        @default(true)
+  created_at   DateTime?       @default(now()) @db.Timestamp(0)
+  updated_at   DateTime?       @default(now()) @updatedAt @db.Timestamp(0)
+  PeriodosCaja periodos_caja[] @relation("camping_periodo")
+  SyncLogs     sync_logs[]
+  UsuarioRoles usuario_roles[]
+  Visitas      visitas[]       @relation("camping_visita")
+
+  @@index([activo], map: "idx_activo")
+  @@index([nombre], map: "idx_nombre")
+  @@map("campings")
+}
+
+model visitas {
+  id                  Int            @id @default(autoincrement())
+  uuid                String         @unique(map: "uuid") @db.VarChar(36)
+  afiliado_id         Int
+  camping_id          Int
+  periodo_caja_id     Int?
+  usuario_registro_id Int
+  fecha_ingreso       DateTime?      @default(now()) @db.Timestamp(0)
+  fecha_egreso        DateTime?      @db.Timestamp(0)
+  acompanantes        Json?
+  observaciones       String?        @db.Text
+  sincronizado        Boolean?       @default(true)
+  registro_offline    Boolean?       @default(false)
+  created_at          DateTime?      @default(now()) @db.Timestamp(0)
+  updated_at          DateTime?      @default(now()) @updatedAt @db.Timestamp(0)
+  Afiliado            afiliados      @relation("afiliado_visita", fields: [afiliado_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "visitas_ibfk_1")
+  Camping             campings       @relation("camping_visita", fields: [camping_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "visitas_ibfk_2")
+  PeriodoCaja         periodos_caja? @relation(fields: [periodo_caja_id], references: [id], onUpdate: NoAction, map: "visitas_ibfk_3")
+  UsuarioReg          usuarios       @relation("usuario_registro", fields: [usuario_registro_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "visitas_ibfk_4")
+
+  @@index([afiliado_id], map: "idx_afiliado")
+  @@index([camping_id, fecha_ingreso], map: "idx_camping_fecha")
+  @@index([fecha_ingreso], map: "idx_fecha_ingreso")
+  @@index([periodo_caja_id], map: "idx_periodo")
+  @@index([sincronizado], map: "idx_sincronizado")
+  @@index([uuid], map: "idx_uuid")
+  @@index([usuario_registro_id], map: "usuario_registro_id")
+  @@map("visitas")
+}
+
+model periodos_caja {
+  id                  Int       @id @default(autoincrement())
+  camping_id          Int
+  usuario_apertura_id Int
+  usuario_cierre_id   Int?
+  fecha_apertura      DateTime? @default(now()) @db.Timestamp(0)
+  fecha_cierre        DateTime? @db.Timestamp(0)
+  total_visitas       Int?      @default(0)
+  observaciones       String?   @db.Text
+  sincronizado        Boolean?  @default(true)
+  activo              Boolean?  @default(true)
+  Camping             campings  @relation("camping_periodo", fields: [camping_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "periodos_caja_ibfk_1")
+  UsuarioApertura     usuarios  @relation("usuario_apertura", fields: [usuario_apertura_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "periodos_caja_ibfk_2")
+  UsuarioCierre       usuarios? @relation("usuario_cierre", fields: [usuario_cierre_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "periodos_caja_ibfk_3")
+  Visitas             visitas[]
+
+  @@index([activo], map: "idx_activo")
+  @@index([camping_id, fecha_apertura], map: "idx_camping_fecha")
+  @@index([sincronizado], map: "idx_sincronizado")
+  @@index([usuario_apertura_id], map: "usuario_apertura_id")
+  @@index([usuario_cierre_id], map: "usuario_cierre_id")
+  @@map("periodos_caja")
+}
+
+model sync_logs {
+  id                      Int               @id @default(autoincrement())
+  usuario_id              Int
+  camping_id              Int?
+  tipo                    sync_tipo_enum
+  registros_sincronizados Int?              @default(0)
+  fecha_sync              DateTime?         @default(now()) @db.Timestamp(0)
+  estado                  sync_estado_enum? @default(success)
+  errores                 Json?
+  detalles                Json?
+  Usuario                 usuarios          @relation(fields: [usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sync_logs_ibfk_1")
+  Camping                 campings?         @relation(fields: [camping_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sync_logs_ibfk_2")
+
+  @@index([camping_id, fecha_sync], map: "idx_camping_fecha")
+  @@index([estado], map: "idx_estado")
+  @@index([tipo], map: "idx_tipo")
+  @@index([usuario_id, fecha_sync], map: "idx_usuario_fecha")
+  @@map("sync_logs")
+}
+
+model auditoria_padron {
+  id               Int                   @id @default(autoincrement())
+  usuario_id       Int
+  accion           auditoria_accion_enum
+  tabla            String                @db.VarChar(50)
+  registro_id      Int
+  datos_anteriores Json?
+  datos_nuevos     Json?
+  ip_address       String?               @db.VarChar(45)
+  created_at       DateTime?             @default(now()) @db.Timestamp(0)
+  Usuario          usuarios              @relation(fields: [usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "auditoria_padron_ibfk_1")
+
+  @@index([accion], map: "idx_accion")
+  @@index([created_at], map: "idx_fecha")
+  @@index([tabla, registro_id], map: "idx_tabla_registro")
+  @@index([usuario_id], map: "idx_usuario")
+  @@map("auditoria_padron")
+}
+
+model configuracion_sistema {
+  id          Int               @id @default(autoincrement())
+  clave       String            @unique(map: "clave") @db.VarChar(100)
+  valor       String?           @db.Text
+  tipo        config_tipo_enum? @default(string)
+  descripcion String?           @db.Text
+  updated_at  DateTime?         @default(now()) @updatedAt @db.Timestamp(0)
+
+  @@index([clave], map: "idx_clave")
+  @@map("configuracion_sistema")
+}
+
+enum sexo_enum {
+  M
+  F
+  X
+}
+
+enum situacion_sindicato_enum {
+  ACTIVO
+  BAJA
+}
+
+enum situacion_obra_social_enum {
+  ACTIVO
+  BAJA
+}
+
+enum sync_tipo_enum {
+  visita
+  egreso
+  cierre_caja
+  batch
+  padron
+}
+
+enum sync_estado_enum {
+  success
+  partial
+  failed
+}
+
+enum auditoria_accion_enum {
+  INSERT
+  UPDATE
+  DELETE
+  IMPORT
+}
+
+enum config_tipo_enum {
+  string
+  number
+  boolean
+  json
+}

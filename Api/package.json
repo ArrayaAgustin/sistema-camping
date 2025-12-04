@@ -1,0 +1,27 @@
+{
+  "name": "camping-smata-api",
+  "version": "1.0.0",
+  "description": "API SMATA - Afiliados y gestión de campings (Prisma + Express)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "jsonwebtoken": "^9.0.0",
+    "morgan": "^1.10.1",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "axios": "^1.13.2",
+    "nodemon": "^2.0.22",
+    "prisma": "^5.10.0"
+  }
+}
