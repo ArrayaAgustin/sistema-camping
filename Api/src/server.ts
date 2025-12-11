@@ -39,10 +39,17 @@ const server = app.listen(config.PORT, () => {
     console.log('🔧 Development mode - detailed error reporting enabled');
     console.log('📍 Available endpoints:');
     console.log('   - GET  / (Health check)');
-    console.log('   - POST /auth/login (Authentication)');
-    console.log('   - GET  /auth/profile (User profile)');
-    console.log('   - GET  /afiliados (Search affiliates)');
-    console.log('   - GET  /afiliados/:id (Get affiliate by ID)');
+    console.log('   - GET  /api/docs (API Documentation)');
+    console.log('   - POST /api/auth/login (Authentication)');
+    console.log('   - GET  /api/auth/profile (User profile)');
+    console.log('   - GET  /api/afiliados (Search affiliates)');
+    console.log('   - GET  /api/afiliados/:id (Get affiliate by ID)');
+    console.log('   - POST /api/visitas (Create visit) ✨');
+    console.log('   - GET  /api/visitas/dia (Get visits by day) ✨');
+    console.log('   - POST /api/sync/visitas (Sync visits) ✨');
+    console.log('   - POST /api/periodos-caja/abrir (Open shift) 💰');
+    console.log('   - PUT  /api/periodos-caja/:id/cerrar (Close shift) 💰');
+    console.log('   - GET  /api/periodos-caja/activo (Active shift) 💰');
   }
 });
 

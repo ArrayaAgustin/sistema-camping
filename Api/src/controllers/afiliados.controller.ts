@@ -22,47 +22,28 @@ export class AfiliadosController implements IAfiliadosController {
    */
   async searchAfiliados(req: Request, res: Response): Promise<Response<IAfiliado[]>> {
     const { 
-      numeroAfiliado,
-      apellidos,
-      nombres,
-      documento,
-      estado = 'activo',
-      limit = '20',
-      offset = '0'
+      q = '',
+      tipo = 'general',
+      limit = 20,
+      offset = 0
     } = req.query as any;
     
     console.log('🔍 Searching afiliados:', { 
-      numeroAfiliado, 
-      apellidos, 
-      nombres, 
-      documento, 
-      estado,
+      q, 
+      tipo, 
       limit, 
       offset,
       user: req.user?.username 
     });
     
     try {
-      const searchCriteria = {
-        numeroAfiliado: numeroAfiliado as string,
-        apellidos: apellidos as string,
-        nombres: nombres as string,
-        documento: documento as string,
-        estado: estado as string,
-        limit: parseInt(limit) || 20,
-        offset: parseInt(offset) || 0
-      };
-
-      // Validar parámetros
-      if (searchCriteria.limit > 100) {
-        return responseHandler.validationError(res, ['Limit cannot exceed 100']);
+      // Si no hay término de búsqueda, devolver lista vacía
+      if (!q || q.trim() === '') {
+        console.log('⚠️ No search term provided');
+        return responseHandler.success(res, [], 'No search term provided');
       }
 
-      if (searchCriteria.limit < 1) {
-        return responseHandler.validationError(res, ['Limit must be at least 1']);
-      }
-
-      const afiliados = await afiliadosService.searchAfiliados('general', searchCriteria.documento || searchCriteria.apellidos || '', searchCriteria.limit);
+      const afiliados = await afiliadosService.searchAfiliados(tipo, q.trim(), limit);
       
       console.log(`✅ Found ${afiliados.length} afiliados`);
       
@@ -387,6 +368,70 @@ export class AfiliadosController implements IAfiliadosController {
       }
       
       return responseHandler.internalError(res, 'Error updating afiliado');
+    }
+  }
+
+  /**
+   * GET /afiliados/export/padron - Obtiene el padrón completo para sincronización offline
+   */
+  async exportPadronCompleto(req: Request, res: Response): Promise<Response<any>> {
+    const includeInactivos = req.query.incluir_inactivos === 'true';
+    const clientVersion = req.query.version as string;
+    const onlyIfNewer = req.query.only_if_newer === 'true';
+    const useCache = req.query.useCache === 'true';
+    
+    console.log('📋 Exporting complete padron - RAW QUERY:', req.query);
+    console.log('📋 Parsed parameters:', { 
+      includeInactivos,
+      clientVersion,
+      onlyIfNewer,
+      user: req.user?.username 
+    });
+
+    try {
+      // Si se solicita solo si hay versión más nueva
+      if (onlyIfNewer && clientVersion) {
+        console.log('🔍 Checking version cache:', { onlyIfNewer, clientVersion });
+        const currentVersion = await afiliadosService.getPadronVersion();
+        console.log('📊 Version comparison:', { 
+          clientVersion, 
+          serverVersion: currentVersion.version,
+          areEqual: currentVersion.version === clientVersion 
+        });
+        
+        if (currentVersion.version === clientVersion) {
+          console.log('✅ Client version is up to date, returning cache response');
+          return responseHandler.success(res, {
+            up_to_date: true,
+            version: currentVersion.version,
+            message: 'Padron is up to date'
+          }, 'Padron is already up to date');
+        } else {
+          console.log('📥 Client version is outdated, will send full padron');
+        }
+      }
+
+      const padronResult = await afiliadosService.getPadronCompleto(includeInactivos, useCache);
+      
+      console.log(`✅ Exported ${padronResult.afiliados.length} afiliados (fromCache: ${padronResult.fromCache})`);
+      
+      return responseHandler.success(res, {
+        afiliados: padronResult.afiliados,
+        total: padronResult.afiliados.length,
+        version: padronResult.version,
+        lastUpdated: padronResult.lastUpdated,
+        fromCache: padronResult.fromCache,
+        timestamp: new Date().toISOString(),
+        incluye_inactivos: includeInactivos
+      }, `Padron exported successfully with ${padronResult.afiliados.length} afiliados ${padronResult.fromCache ? '(from cache)' : '(fresh data)'}`);
+      
+    } catch (error: any) {
+      console.error('❌ Export padron error:', {
+        message: error.message,
+        stack: error.stack
+      });
+      
+      return responseHandler.internalError(res, 'Error exporting padron');
     }
   }
 }

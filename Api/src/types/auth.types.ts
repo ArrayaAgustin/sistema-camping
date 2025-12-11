@@ -20,6 +20,8 @@ export enum Permission {
   CREATE_VISITAS = 'create:visitas',
   READ_VISITAS = 'read:visitas',
   SYNC_VISITAS = 'sync:visitas',
+  MANAGE_CAJA = 'manage:caja',
+  READ_CAJA = 'read:caja',
   ADMIN = 'admin'
 }
 

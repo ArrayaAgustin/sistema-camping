@@ -21,8 +21,8 @@ const router = Router();
 
 // GET /afiliados - Buscar afiliados (autenticación opcional para búsquedas públicas)
 router.get('/', 
-  optionalAuth,
-  searchRateLimit,
+  authenticateMiddleware,
+  // searchRateLimit, // Temporalmente deshabilitado para debug
   validateQuery(ValidationSchemas.searchAfiliados),
   afiliadosController.searchAfiliados
 );
@@ -40,6 +40,15 @@ router.get('/version/padron',
   authenticateMiddleware, 
   standardRateLimit,
   afiliadosController.getPadronVersion
+);
+
+// GET /afiliados/export/padron - Exportar padrón completo para sincronización offline
+router.get('/export/padron', 
+  authenticateMiddleware, 
+  checkPermission('read:afiliados'), 
+  standardRateLimit,
+  // Temporarily removed query validation to fix cache
+  afiliadosController.exportPadronCompleto
 );
 
 // GET /afiliados/numero/:numeroAfiliado - Buscar por número de afiliado

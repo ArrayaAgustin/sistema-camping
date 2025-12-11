@@ -7,20 +7,14 @@ import { ID, Timestamp } from './common.types';
 // Enums para afiliados
 export enum SexoEnum {
   M = 'M',
-  F = 'F'
+  F = 'F',
+  X = 'X'
 }
 
-export enum SituacionSindicatoEnum {
-  ACTIVO = 'ACTIVO',
-  INACTIVO = 'INACTIVO',
-  SUSPENDIDO = 'SUSPENDIDO'
-}
-
-export enum SituacionObraSocialEnum {
-  ACTIVO = 'ACTIVO',
-  INACTIVO = 'INACTIVO',
-  SUSPENDIDO = 'SUSPENDIDO'
-}
+// Tipos para compatibilidad con Prisma enums
+export type SituacionSindicatoEnum = 'ACTIVO' | 'BAJA';
+export type SituacionObraSocialEnum = 'ACTIVO' | 'BAJA';
+export type SexoType = 'M' | 'F' | 'X';
 
 // Tipo base de afiliado
 export interface IAfiliado {
@@ -32,7 +26,7 @@ export interface IAfiliado {
   numeroAfiliado: string;  // Agregar alias para compatibilidad
   numero_afiliado: string | null;
   documento: string;  // Alias para DNI
-  sexo: SexoEnum;
+  sexo: SexoType | null;
   tipo_afiliado: string | null;
   fecha_nacimiento: Timestamp | null;
   categoria: string | null;
@@ -51,8 +45,8 @@ export interface IAfiliado {
   qr_code: string | null;
   padron_version_id: ID | null;
   activo: boolean;
-  created_at: Timestamp;
-  updated_at: Timestamp;
+  created_at: Timestamp | null;
+  updated_at: Timestamp | null;
 }
 
 // Afiliado con familiares incluidos

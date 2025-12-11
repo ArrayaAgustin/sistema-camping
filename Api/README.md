@@ -345,7 +345,7 @@ CACHE_TTL=3600        # Time to live en segundos
 - [ ] Rate limiting por usuario/IP
 - [ ] Swagger/OpenAPI documentation
 - [ ] GraphQL endpoint opcional
-- [ ] Websockets para updates en tiempo real
+- [ ] Websockets para updates en tiempo realz
 
 #### 🔐 **Seguridad Avanzada**
 - [ ] Refresh tokens

@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
 import afiliadosRoutes from './afiliados.routes';
+import visitasRoutes from './visitas.routes';
+import syncRoutes from './sync.routes';
+import periodosCajaRoutes from './periodos-caja.routes';
+
 
 // Importar rutas legacy (JavaScript) que aún no se han migrado
 //const visitasRoutes = require('./visitas');
@@ -16,6 +20,15 @@ router.use('/auth', authRoutes);
 
 // Rutas de afiliados (TypeScript) 
 router.use('/afiliados', afiliadosRoutes);
+
+// Rutas de visitas (TypeScript)
+router.use('/visitas', visitasRoutes);
+
+// Rutas de sincronización (TypeScript)
+router.use('/sync', syncRoutes);
+
+// Rutas de períodos de caja (TypeScript)
+router.use('/periodos-caja', periodosCajaRoutes);
 
 // Rutas legacy (JavaScript) - TODO: Migrar a TypeScript
 //router.use('/visitas', visitasRoutes);
@@ -33,8 +46,9 @@ router.get('/health', (req, res) => {
     routes: {
       auth: '/auth',
       afiliados: '/afiliados',
-      visitas: '/visitas (legacy)',
-      sync: '/sync (legacy)'
+      visitas: '/visitas',
+      sync: '/sync',
+      periodosCaja: '/periodos-caja'
     }
   });
 });
@@ -65,6 +79,20 @@ router.get('/docs', (req, res) => {
         update: 'PUT /afiliados/:id',
         stats: 'GET /afiliados/stats/padron',
         version: 'GET /afiliados/version/padron'
+      },
+      visitas: {
+        create: 'POST /visitas',
+        getByDay: 'GET /visitas/dia?camping_id=X&fecha=YYYY-MM-DD'
+      },
+      sync: {
+        syncVisitas: 'POST /sync/visitas'
+      },
+      periodosCaja: {
+        abrir: 'POST /periodos-caja/abrir',
+        cerrar: 'PUT /periodos-caja/:id/cerrar',
+        activo: 'GET /periodos-caja/activo?camping_id=X',
+        getPeriodo: 'GET /periodos-caja/:id',
+        historial: 'GET /periodos-caja/historial?camping_id=X&limite=20'
       },
       util: {
         health: 'GET /health',

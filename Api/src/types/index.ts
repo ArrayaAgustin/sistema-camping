@@ -12,6 +12,9 @@ export * from './auth.types';
 // Afiliados types
 export * from './afiliados.types';
 
+// Visitas types
+export * from './visitas.types';
+
 // Re-export specific interfaces que se usan frecuentemente
 export type {
   IApiResponse,

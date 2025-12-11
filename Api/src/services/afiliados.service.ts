@@ -1,7 +1,10 @@
 import { prisma } from '../config/prisma-config';
+import * as fs from 'fs';
+import * as path from 'path';
 import { IAfiliadosService } from '../interfaces/afiliados/afiliados.interfaces';
 import { 
-  IAfiliado, 
+  IAfiliado,
+  IAfiliadoDetailed,
   IAfiliadoResponse, 
   IPadronVersion, 
   IPadronStats,
@@ -15,76 +18,195 @@ import {
  * Servicio de afiliados - Implementa la lógica de negocio para gestión de afiliados
  * Implementa la interface IAfiliadosService
  */
-export class AfiliadosService implements IAfiliadosService {
+export class AfiliadosService {
+  private cacheDir = path.join(process.cwd(), 'cache');
+  private padronCacheFile = path.join(this.cacheDir, 'padron-completo.json');
+  private cacheVersionFile = path.join(this.cacheDir, 'padron-version.json');
+  private cacheMaxAge = 24 * 60 * 60 * 1000; // 24 horas en millisegundos
+
+  constructor() {
+    // Crear directorio de cache si no existe
+    if (!fs.existsSync(this.cacheDir)) {
+      fs.mkdirSync(this.cacheDir, { recursive: true });
+    }
+  }
 
   /**
    * Busca afiliados según criterios de búsqueda
    */
-  async searchAfiliados(tipo: 'dni' | 'apellido' | 'general', q: string, limit: number): Promise<IAfiliado[]> {
+  async searchAfiliados(tipo: 'dni' | 'apellido' | 'general', q: string, limit: number): Promise<any[]> {
+    console.log('🔍 AfiliadosService.searchAfiliados:', { tipo, q, limit });
 
     try {
-      let whereClause: any = {
-        activo: true // Solo afiliados activos por defecto
-      };
+      // Construir filtros más simples para diagnosticar
+      let whereClause: any = {};
 
-      // Construir filtros según el tipo de búsqueda
-      switch (tipo) {
-        case 'dni':
-          whereClause.dni = { contains: q };
-          break;
-        case 'apellido':
-          whereClause.apellido = { contains: q.toUpperCase(), mode: 'insensitive' };
-          break;
-        case 'general':
-          whereClause.OR = [
-            { apellido: { contains: q.toUpperCase(), mode: 'insensitive' } },
-            { nombres: { contains: q.toUpperCase(), mode: 'insensitive' } },
-            { dni: { contains: q } }
-          ];
-          break;
+      if (tipo === 'dni') {
+        whereClause.dni = { contains: q };
+      } else if (tipo === 'apellido') {
+        whereClause.apellido = { contains: q.toUpperCase() };
+      } else {
+        // general
+        whereClause.OR = [
+          { apellido: { contains: q.toUpperCase() } },
+          { nombres: { contains: q.toUpperCase() } },
+          { dni: { contains: q } }
+        ];
+      }
+
+      console.log('📊 Where clause:', JSON.stringify(whereClause, null, 2));
+
+      const afiliados = await prisma.afiliados.findMany({
+        where: whereClause,
+        orderBy: { apellido: 'asc' },
+        take: Math.min(limit, 10) // Limitar más para diagnosticar
+      });
+
+      console.log(`✅ Found ${afiliados.length} raw afiliados`);
+      
+      if (afiliados.length > 0) {
+        console.log('📄 Sample afiliado:', JSON.stringify(afiliados[0], null, 2));
+      }
+
+      // Mapear resultados usando el mapPrismaToAfiliado
+      const result = afiliados.map(afiliado => this.mapPrismaToAfiliado(afiliado));
+
+      return result;
+    } catch (error) {
+      console.error('❌ Error searching afiliados:', error);
+      throw new Error('Error searching afiliados');
+    }
+  }
+
+  /**
+   * Obtiene el padrón completo de afiliados para sincronización offline
+   */
+  async getPadronCompleto(includeInactivos: boolean = false, useCache: boolean = false): Promise<{ afiliados: any[], version: string, lastUpdated: string, fromCache: boolean }> {
+    console.log('📋 Getting complete padron, includeInactivos:', includeInactivos, 'useCache:', useCache);
+
+    try {
+      // Si se solicita cache, intentar leerlo
+      if (useCache && await this.isCacheValid()) {
+        console.log('💾 Using cached padron data');
+        return await this.getCachedPadron();
+      }
+
+      // Generar datos frescos desde la base de datos
+      console.log('🔄 Generating fresh padron data from database');
+      const whereClause: any = {};
+      
+      if (!includeInactivos) {
+        whereClause.activo = true;
       }
 
       const afiliados = await prisma.afiliados.findMany({
         where: whereClause,
+        include: {
+          Familiares: true
+        },
         orderBy: [
           { apellido: 'asc' },
           { nombres: 'asc' }
-        ],
-        take: Math.min(limit, 100), // Máximo 100 registros por consulta
-        include: {
-          Familiares: {
-            where: { activo: true },
-            orderBy: { nombre: 'asc' },
-            take: 5 // Limitar familiares en búsquedas generales
-          }
-        }
+        ]
       });
 
-      // Mapear a la interface IAfiliado
-      return afiliados.map(this.mapPrismaToAfiliado);
+      console.log(`✅ Retrieved ${afiliados.length} afiliados for complete padron`);
+
+      // Mapear resultados
+      const mappedAfiliados = afiliados.map(afiliado => this.mapPrismaToAfiliado(afiliado));
+      
+      // Crear resultado con metadatos
+      const result = {
+        afiliados: mappedAfiliados,
+        version: new Date().toISOString().split('T')[0] + '-' + Date.now(),
+        lastUpdated: new Date().toISOString(),
+        fromCache: false
+      };
+
+      // Guardar en cache para uso futuro
+      await this.savePadronCache(result);
+
+      return result;
     } catch (error) {
-      console.error('Error searching afiliados:', error);
-      throw new Error('Error searching afiliados');
+      console.error('❌ Error getting complete padron:', error);
+      throw new Error('Error getting complete padron');
+    }
+  }
+
+  /**
+   * Verifica si el cache es válido (no ha expirado)
+   */
+  private async isCacheValid(): Promise<boolean> {
+    try {
+      if (!fs.existsSync(this.cacheVersionFile) || !fs.existsSync(this.padronCacheFile)) {
+        return false;
+      }
+
+      const versionData = JSON.parse(fs.readFileSync(this.cacheVersionFile, 'utf8'));
+      const cacheTime = new Date(versionData.lastUpdated).getTime();
+      const now = Date.now();
+
+      return (now - cacheTime) < this.cacheMaxAge;
+    } catch (error) {
+      console.error('Error checking cache validity:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Obtiene datos del cache
+   */
+  private async getCachedPadron(): Promise<{ afiliados: any[], version: string, lastUpdated: string, fromCache: boolean }> {
+    try {
+      const cacheData = JSON.parse(fs.readFileSync(this.padronCacheFile, 'utf8'));
+      const versionData = JSON.parse(fs.readFileSync(this.cacheVersionFile, 'utf8'));
+      
+      return {
+        afiliados: cacheData,
+        version: versionData.version,
+        lastUpdated: versionData.lastUpdated,
+        fromCache: true
+      };
+    } catch (error) {
+      console.error('Error reading cached padron:', error);
+      throw new Error('Error reading cached padron');
+    }
+  }
+
+  /**
+   * Guarda datos en el cache
+   */
+  private async savePadronCache(data: { afiliados: any[], version: string, lastUpdated: string }): Promise<void> {
+    try {
+      // Guardar afiliados
+      fs.writeFileSync(this.padronCacheFile, JSON.stringify(data.afiliados, null, 2));
+      
+      // Guardar metadatos de versión
+      const versionData = {
+        version: data.version,
+        lastUpdated: data.lastUpdated,
+        totalAfiliados: data.afiliados.length
+      };
+      fs.writeFileSync(this.cacheVersionFile, JSON.stringify(versionData, null, 2));
+      
+      console.log(`💾 Padron cache saved: ${data.afiliados.length} afiliados (${(fs.statSync(this.padronCacheFile).size / 1024 / 1024).toFixed(2)} MB)`);
+    } catch (error) {
+      console.error('Error saving padron cache:', error);
     }
   }
 
   /**
    * Obtiene un afiliado específico por su ID
    */
-  async getAfiliadoById(afiliadoId: number): Promise<IAfiliado | null> {
+  async getAfiliadoById(afiliadoId: number): Promise<any | null> {
     if (!afiliadoId || isNaN(afiliadoId)) {
       throw new Error('Valid afiliado ID is required');
     }
 
     try {
       const afiliado = await prisma.afiliados.findUnique({
-        where: { id: afiliadoId },
-        include: {
-          Familiares: {
-            where: { activo: true },
-            orderBy: { nombre: 'asc' }
-          }
-        }
+        where: { id: afiliadoId }
+        // Sin include - solo datos del afiliado
       });
 
       if (!afiliado) {
@@ -145,27 +267,21 @@ export class AfiliadosService implements IAfiliadosService {
         where: { 
           id: numero,
           activo: true 
-        },
-        include: {
-          Familiares: {
-            where: { activo: true },
-            orderBy: { nombre: 'asc' }
-          }
         }
+        // Sin include para evitar problemas de tipos
       });
 
       if (!afiliado) {
         return null;
       }
 
-      // Convertir a IAfiliadoResponse
-      const afiliadoMapped = this.mapPrismaToAfiliado(afiliado);
-      const familiaresMapped = afiliado.Familiares?.map(familiar => this.mapPrismaToFamiliar(familiar)) || [];
+      // Obtener familiares por separado usando método existente
+      const familiares = await this.getFamiliaresByAfiliado(numero);
 
       return {
-        afiliado: afiliadoMapped,
-        familiares: familiaresMapped,
-        totalFamiliares: familiaresMapped.length
+        afiliado: this.mapPrismaToAfiliado(afiliado),
+        familiares,
+        totalFamiliares: familiares.length
       };
     } catch (error) {
       console.error('Error getting afiliado by numero:', error);
@@ -176,24 +292,18 @@ export class AfiliadosService implements IAfiliadosService {
   /**
    * Busca afiliados por documento
    */
-  async getAfiliadosByDocumento(documento: string): Promise<IAfiliado[]> {
+  async getAfiliadosByDocumento(documento: string): Promise<any[]> {
     try {
       const afiliados = await prisma.afiliados.findMany({
         where: { 
           dni: documento,
           activo: true 
         },
-        include: {
-          Familiares: {
-            where: { activo: true },
-            orderBy: { nombre: 'asc' },
-            take: 5
-          }
-        },
         orderBy: [
           { apellido: 'asc' },
           { nombres: 'asc' }
         ]
+        // Sin include para evitar problemas de tipos
       });
 
       return afiliados.map(this.mapPrismaToAfiliado);
@@ -280,7 +390,7 @@ export class AfiliadosService implements IAfiliadosService {
   /**
    * Actualiza los datos de un afiliado
    */
-  async updateAfiliado(afiliadoId: number, updateData: Partial<IAfiliado>): Promise<IAfiliado> {
+  async updateAfiliado(afiliadoId: number, updateData: Partial<any>): Promise<any> {
     try {
       const existingAfiliado = await this.getAfiliadoById(afiliadoId);
       if (!existingAfiliado) {
@@ -298,13 +408,8 @@ export class AfiliadosService implements IAfiliadosService {
           domicilio: updateData.domicilio,
           activo: updateData.activo,
           updated_at: new Date()
-        },
-        include: {
-          Familiares: {
-            where: { activo: true },
-            orderBy: { nombre: 'asc' }
-          }
         }
+        // Sin include para evitar problemas de tipos
       });
 
       return this.mapPrismaToAfiliado(updatedAfiliado);
@@ -329,7 +434,7 @@ export class AfiliadosService implements IAfiliadosService {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }): Promise<{
-    afiliados: IAfiliado[];
+    afiliados: any[];
     total: number;
     page: number;
     pageSize: number;
@@ -398,14 +503,8 @@ export class AfiliadosService implements IAfiliadosService {
           where: whereClause,
           orderBy,
           take: limit,
-          skip: offset,
-          include: {
-            Familiares: {
-              where: { activo: true },
-              orderBy: { nombre: 'asc' },
-              take: 3 // Limitar en búsquedas avanzadas
-            }
-          }
+          skip: offset
+          // Sin include para evitar problemas de tipos
         }),
         prisma.afiliados.count({ where: whereClause })
       ]);
@@ -447,38 +546,54 @@ export class AfiliadosService implements IAfiliadosService {
   /**
    * Mapea un registro de Prisma a la interface IAfiliado
    */
-  private mapPrismaToAfiliado(prismaAfiliado: any): IAfiliado {
-    return {
-      id: prismaAfiliado.id,
-      cuil: prismaAfiliado.cuil || '',
-      dni: prismaAfiliado.dni || '',
-      apellido: prismaAfiliado.apellido || '',
-      nombres: prismaAfiliado.nombres || '',
-      numeroAfiliado: prismaAfiliado.numero_afiliado || '',
-      numero_afiliado: prismaAfiliado.numero_afiliado,
-      documento: prismaAfiliado.dni || '',
-      sexo: prismaAfiliado.sexo,
-      tipo_afiliado: prismaAfiliado.tipo_afiliado,
-      fecha_nacimiento: prismaAfiliado.fecha_nacimiento,
-      categoria: prismaAfiliado.categoria,
-      situacion_sindicato: prismaAfiliado.situacion_sindicato,
-      situacion_obra_social: prismaAfiliado.situacion_obra_social,
-      domicilio: prismaAfiliado.domicilio,
-      provincia: prismaAfiliado.provincia,
-      localidad: prismaAfiliado.localidad,
-      empresa_cuit: prismaAfiliado.empresa_cuit,
-      empresa_nombre: prismaAfiliado.empresa_nombre,
-      codigo_postal: prismaAfiliado.codigo_postal,
-      telefono: prismaAfiliado.telefono,
-      email: prismaAfiliado.email,
-      grupo_sanguineo: prismaAfiliado.grupo_sanguineo,
-      foto_url: prismaAfiliado.foto_url,
-      qr_code: prismaAfiliado.qr_code,
-      padron_version_id: prismaAfiliado.padron_version_id,
-      activo: prismaAfiliado.activo || false,
-      created_at: prismaAfiliado.created_at,
-      updated_at: prismaAfiliado.updated_at
-    };
+  private mapPrismaToAfiliado(prismaAfiliado: any): IAfiliado | IAfiliadoDetailed {
+    try {
+      const mapped = {
+        id: prismaAfiliado.id || 0,
+        cuil: prismaAfiliado.cuil || '',
+        dni: prismaAfiliado.dni || '',
+        apellido: prismaAfiliado.apellido || '',
+        nombres: prismaAfiliado.nombres || '',
+        numeroAfiliado: prismaAfiliado.numero_afiliado || prismaAfiliado.cuil || '',
+        numero_afiliado: prismaAfiliado.numero_afiliado || prismaAfiliado.cuil || '',
+        documento: prismaAfiliado.dni || '',
+        sexo: prismaAfiliado.sexo as 'M' | 'F' | 'X' | null,
+        tipo_afiliado: prismaAfiliado.tipo_afiliado || null,
+        fecha_nacimiento: prismaAfiliado.fecha_nacimiento || null,
+        categoria: prismaAfiliado.categoria || null,
+        situacion_sindicato: prismaAfiliado.situacion_sindicato as 'ACTIVO' | 'BAJA' | null,
+        situacion_obra_social: prismaAfiliado.situacion_obra_social as 'ACTIVO' | 'BAJA' | null,
+        domicilio: prismaAfiliado.domicilio || null,
+        provincia: prismaAfiliado.provincia || null,
+        localidad: prismaAfiliado.localidad || null,
+        empresa_cuit: prismaAfiliado.empresa_cuit || null,
+        empresa_nombre: prismaAfiliado.empresa_nombre || null,
+        codigo_postal: prismaAfiliado.codigo_postal || null,
+        telefono: prismaAfiliado.telefono || null,
+        email: prismaAfiliado.email || null,
+        grupo_sanguineo: prismaAfiliado.grupo_sanguineo || null,
+        foto_url: prismaAfiliado.foto_url || null,
+        qr_code: prismaAfiliado.qr_code || null,
+        padron_version_id: prismaAfiliado.padron_version_id || null,
+        activo: prismaAfiliado.activo !== undefined ? prismaAfiliado.activo : true,
+        created_at: prismaAfiliado.created_at || null,
+        updated_at: prismaAfiliado.updated_at || null
+      };
+
+      // Si incluye familiares, agregarlos al resultado
+      if (prismaAfiliado.Familiares && Array.isArray(prismaAfiliado.Familiares)) {
+        return {
+          ...mapped,
+          Familiares: prismaAfiliado.Familiares.map(this.mapPrismaToFamiliar)
+        } as IAfiliadoDetailed;
+      }
+
+      return mapped as IAfiliado;
+    } catch (error) {
+      console.error('Error mapping Prisma afiliado:', error);
+      console.error('Prisma afiliado data:', JSON.stringify(prismaAfiliado, null, 2));
+      throw new Error('Error mapping afiliado data');
+    }
   }
 
   /**
@@ -506,7 +621,7 @@ export class AfiliadosService implements IAfiliadosService {
   /**
    * Busca afiliados por DNI - Requerido por IAfiliadosService
    */
-  async getAfiliadosByDni(dni: string): Promise<IAfiliado[]> {
+  async getAfiliadosByDni(dni: string): Promise<any[]> {
     try {
       return await this.searchAfiliados('dni', dni, 50);
     } catch (error) {

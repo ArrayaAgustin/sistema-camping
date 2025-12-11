@@ -17,11 +17,69 @@ const app = express();
 // Middlewares globales
 app.use(morgan(config.LOG_LEVEL));
 app.use(cors({
-  origin: config.CORS_ORIGIN,
+  origin: function (origin, callback) {
+    // Permitir requests sin origen (como apps móviles) o desde los orígenes permitidos
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173', 
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:5174',
+      'http://127.0.0.1:5174'
+    ];
+    
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('🚫 CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization', 
+    'x-api-key',
+    'Accept',
+    'Origin',
+    'X-Requested-With',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers'
+  ],
+  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
+  optionsSuccessStatus: 200,
+  preflightContinue: false
 }));
+
+// Middleware adicional para CORS manual
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173', 
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174'
+  ];
+
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  }
+  
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH,HEAD');
+  res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-api-key,Accept,Origin,X-Requested-With,Access-Control-Request-Method,Access-Control-Request-Headers');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
+  
+  if (req.method === 'OPTIONS') {
+    console.log('🔧 Handling OPTIONS preflight for:', req.originalUrl);
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
 
 app.use(express.json({ 
   limit: '2mb',
@@ -75,8 +133,9 @@ console.log('📋 Rutas configuradas:');
 console.log('   🔗 /api/* (Todas las rutas bajo /api)');
 console.log('   🔐 /api/auth/* (Autenticación)');
 console.log('   👥 /api/afiliados/* (Afiliados)');
-console.log('   📝 /api/visitas/* (Legacy)');
-console.log('   🔄 /api/sync/* (Legacy)');
+console.log('   📝 /api/visitas/* (TypeScript ✅)');
+console.log('   🔄 /api/sync/* (TypeScript ✅)');
+console.log('   💰 /api/periodos-caja/* (Turnos/Caja ✅)');
 console.log('   📊 /api/health (Health check)');
 console.log('   📚 /api/docs (Documentación)');
 

@@ -9,6 +9,9 @@ export * from './auth';
 // Interfaces de afiliados
 export * from './afiliados';
 
+// Interfaces de visitas
+export * from './visitas';
+
 // Interfaces comunes (middlewares, utilidades)
 export * from './common';
 

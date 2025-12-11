@@ -73,7 +73,11 @@ export class ValidationMiddleware implements IValidationMiddleware {
    */
   validateQuery(schema: IValidationSchema) {
     return (req: Request, res: Response, next: NextFunction): void => {
-      const errors = this.validateObject(req.query, schema, 'query');
+      // Convertir tipos automáticamente para query parameters
+      const convertedQuery = this.convertQueryTypes(req.query, schema);
+      req.query = convertedQuery;
+      
+      const errors = this.validateObject(convertedQuery, schema, 'query');
       
       if (errors.length > 0) {
         res.status(400).json({
@@ -213,6 +217,36 @@ export class ValidationMiddleware implements IValidationMiddleware {
     }
     
     return errors;
+  }
+
+  /**
+   * Convierte tipos automáticamente para query parameters
+   */
+  private convertQueryTypes(query: any, schema: IValidationSchema): any {
+    const converted = { ...query };
+    
+    for (const [field, rules] of Object.entries(schema)) {
+      const value = converted[field];
+      
+      if (value !== undefined && value !== null && value !== '') {
+        switch (rules.type) {
+          case 'number':
+            const num = Number(value);
+            if (!isNaN(num)) {
+              converted[field] = num;
+            }
+            break;
+          case 'boolean':
+            if (typeof value === 'string') {
+              converted[field] = value.toLowerCase() === 'true';
+            }
+            break;
+          // string, email, array, object se mantienen como están
+        }
+      }
+    }
+    
+    return converted;
   }
 
   /**

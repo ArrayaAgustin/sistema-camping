@@ -20,6 +20,7 @@ export interface IAfiliadosController {
   updateAfiliado(req: Request, res: Response): Promise<Response<IAfiliado>>;
   getPadronVersion(req: Request, res: Response): Promise<Response<IPadronVersion>>;
   getPadronStats(req: Request, res: Response): Promise<Response<IApiResponse<IPadronStats>>>;
+  exportPadronCompleto(req: Request, res: Response): Promise<Response<any>>;
 }
 
 /**
@@ -33,4 +34,5 @@ export interface IAfiliadosService {
   getPadronVersion(): Promise<IPadronVersion>;
   getPadronStats(): Promise<IPadronStats>;
   canUserAccessAfiliado(userId: number, afiliadoId: number): Promise<boolean>;
+  getPadronCompleto(includeInactivos?: boolean): Promise<any[]>;
 }
