@@ -12,6 +12,9 @@ export * from './afiliados';
 // Interfaces de visitas
 export * from './visitas';
 
+// Interfaces de personas
+export * from './personas';
+
 // Interfaces comunes (middlewares, utilidades)
 export * from './common';
 

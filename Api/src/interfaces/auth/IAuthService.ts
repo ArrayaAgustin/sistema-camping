@@ -85,4 +85,9 @@ export interface IAuthService {
    * @returns Nuevo token JWT
    */
   refreshToken(userId: number): Promise<string>;
+
+  /**
+   * Resetea la contraseña al DNI asociado y fuerza cambio
+   */
+  resetPasswordToDni(userId?: number, username?: string): Promise<{ userId: number; username: string; password: string }>;
 }

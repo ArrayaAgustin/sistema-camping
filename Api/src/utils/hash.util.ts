@@ -52,15 +52,11 @@ export class HashUtil {
         errors.push('Password must be less than 100 characters long');
       }
       
-      // Validaciones adicionales de seguridad
-      if (!/[a-z]/.test(password)) {
-        errors.push('Password must contain at least one lowercase letter');
+      // Validaciones básicas de seguridad
+      if (!/[a-zA-Z]/.test(password)) {
+        errors.push('Password must contain at least one letter');
       }
-      
-      if (!/[A-Z]/.test(password)) {
-        errors.push('Password must contain at least one uppercase letter');
-      }
-      
+
       if (!/[0-9]/.test(password)) {
         errors.push('Password must contain at least one number');
       }

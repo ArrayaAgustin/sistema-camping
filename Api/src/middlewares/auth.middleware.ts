@@ -27,8 +27,9 @@ export class AuthMiddleware implements IAuthMiddleware {
   async verifyToken(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     try {
       const authHeader = req.headers.authorization;
+      const cookieToken = (req as any).cookies?.['camping-token'] as string | undefined;
       
-      if (!authHeader) {
+      if (!authHeader && !cookieToken) {
         return res.status(401).json({ 
           success: false,
           error: 'Token missing',
@@ -37,7 +38,7 @@ export class AuthMiddleware implements IAuthMiddleware {
         } as IApiResponse<null>);
       }
 
-      const token = JwtUtil.extractTokenFromHeader(authHeader);
+      const token = authHeader ? JwtUtil.extractTokenFromHeader(authHeader) : cookieToken;
       
       if (!token) {
         return res.status(401).json({ 
@@ -153,13 +154,14 @@ export class AuthMiddleware implements IAuthMiddleware {
   async optionalAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const authHeader = req.headers.authorization;
+      const cookieToken = (req as any).cookies?.['camping-token'] as string | undefined;
       
-      if (!authHeader) {
+      if (!authHeader && !cookieToken) {
         // No hay token, continuar sin usuario
         return next();
       }
 
-      const token = JwtUtil.extractTokenFromHeader(authHeader);
+      const token = authHeader ? JwtUtil.extractTokenFromHeader(authHeader) : cookieToken;
       
       if (!token) {
         // Token con formato inválido, continuar sin usuario

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { authService } from '../services';
 import { JwtUtil, HashUtil } from '../utils';
+import { config } from '../config';
 import { IAuthController } from '../interfaces/auth/auth.interfaces';
 import { 
   ILoginRequest,
@@ -69,13 +70,22 @@ export class AuthController implements IAuthController {
           username: loginResult.user.username,
           email: loginResult.user.email,
           afiliado_id: loginResult.user.afiliado_id,
+          persona_id: loginResult.user.persona_id,
           roles: loginResult.user.roles,
           permisos: loginResult.user.permisos,
-          activo: loginResult.user.activo
+          activo: loginResult.user.activo,
+          must_change_password: loginResult.user.must_change_password
         },
         timestamp: new Date().toISOString()
       };
       
+      res.cookie('camping-token', token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: config.NODE_ENV === 'production',
+        maxAge: 1000 * 60 * 60 * 8
+      });
+
       return res.status(200).json(response);
       
     } catch (error: any) {
@@ -170,7 +180,7 @@ export class AuthController implements IAuthController {
       timestamp: new Date().toISOString()
     });
 
-    const { username, email, afiliado_id, activo } = req.body;
+    const { username, email, afiliado_id, persona_id } = req.body;
     
     if (!username || !email) {
       return responseHandler.validationError(res, [
@@ -187,8 +197,8 @@ export class AuthController implements IAuthController {
       const createResult = await authService.createUser({
         username,
         email,
-        password: 'temp123456', // Contraseña temporal
-        afiliado_id
+        afiliado_id,
+        persona_id
       });
 
       console.log('✅ User created successfully:', createResult.username);
@@ -207,6 +217,29 @@ export class AuthController implements IAuthController {
       }
       
       return responseHandler.internalError(res, 'Error creating user');
+    }
+  }
+
+  /**
+   * POST /auth/reset-password - Resetea contraseña al DNI (admin)
+   */
+  async resetPassword(req: Request, res: Response<IApiResponse<{ userId: number; username: string }>>): Promise<Response<IApiResponse<{ userId: number; username: string }>>> {
+    const { userId, username } = req.body as { userId?: number; username?: string };
+
+    if (!userId && !username) {
+      return responseHandler.validationError(res, ['userId o username es requerido']);
+    }
+
+    try {
+      const result = await authService.resetPasswordToDni(userId, username);
+
+      return responseHandler.success(res, {
+        userId: result.userId,
+        username: result.username
+      }, 'Password reseteada al DNI');
+    } catch (error: any) {
+      console.error('❌ Reset password error:', error.message);
+      return responseHandler.internalError(res, error.message || 'Error al resetear contraseña');
     }
   }
 
@@ -233,9 +266,11 @@ export class AuthController implements IAuthController {
           username: user.username,
           email: user.email,
           afiliado_id: user.afiliado_id,
+          persona_id: user.persona_id,
           roles: user.roles,
           permisos: user.permisos,
           activo: user.activo,
+          must_change_password: user.must_change_password,
           ultimo_acceso: user.ultimo_acceso,
           created_at: user.created_at,
           updated_at: user.updated_at,
@@ -268,6 +303,12 @@ export class AuthController implements IAuthController {
         userId: req.user?.id,
         username: req.user?.username,
         timestamp: new Date().toISOString()
+      });
+
+      res.clearCookie('camping-token', {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: config.NODE_ENV === 'production'
       });
 
       return responseHandler.success(res, null, 'Logged out successfully');
@@ -312,13 +353,10 @@ export class AuthController implements IAuthController {
    * POST /auth/change-password - Cambiar contraseña del usuario
    */
   async changePassword(req: Request, res: Response): Promise<Response<IUserResponse>> {
-    const { currentPassword, newPassword } = req.body;
-    
-    if (!currentPassword || !newPassword) {
-      return responseHandler.validationError(res, [
-        'Current password is required',
-        'New password is required'
-      ]);
+    const { currentPassword = '', newPassword } = req.body;
+
+    if (!newPassword) {
+      return responseHandler.validationError(res, ['New password is required']);
     }
 
     // Validar nueva contraseña

@@ -55,4 +55,9 @@ export interface IAuthController {
    * @param res - Response con nuevo token
    */
   refreshToken(req: Request, res: Response): Promise<Response<IApiResponse<{ token: string }>>>;
+
+  /**
+   * POST /auth/reset-password - Resetea contraseña al DNI (admin)
+   */
+  resetPassword(req: Request, res: Response): Promise<Response<IApiResponse<{ userId: number; username: string }>>>;
 }

@@ -1,4 +1,6 @@
 import { ID, Timestamp } from './common.types';
+import { IPersonaBasic } from './personas.types';
+
 
 /**
  * Tipos relacionados con afiliados y familiares
@@ -20,34 +22,48 @@ export type SexoType = 'M' | 'F' | 'X';
 export interface IAfiliado {
   id: ID;
   cuil: string;
+
+  // ⚠️ legacy (por ahora)
   dni: string;
   apellido: string;
   nombres: string;
-  numeroAfiliado: string;  // Agregar alias para compatibilidad
+
+  // NUEVO
+  persona?: IPersonaBasic;
+
+  numeroAfiliado: string;
   numero_afiliado: string | null;
-  documento: string;  // Alias para DNI
+  documento: string;
+
   sexo: SexoType | null;
   tipo_afiliado: string | null;
   fecha_nacimiento: Timestamp | null;
   categoria: string | null;
   situacion_sindicato: SituacionSindicatoEnum | null;
   situacion_obra_social: SituacionObraSocialEnum | null;
+
   domicilio: string | null;
   provincia: string | null;
   localidad: string | null;
   empresa_cuit: string | null;
   empresa_nombre: string | null;
   codigo_postal: string | null;
+
   telefono: string | null;
   email: string | null;
+
   grupo_sanguineo: string | null;
   foto_url: string | null;
+
+  // ⚠️ legacy QR (después lo sacamos)
   qr_code: string | null;
+
   padron_version_id: ID | null;
   activo: boolean;
   created_at: Timestamp | null;
   updated_at: Timestamp | null;
 }
+
 
 // Afiliado con familiares incluidos
 export interface IAfiliadoDetailed extends IAfiliado {

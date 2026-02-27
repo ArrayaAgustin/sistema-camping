@@ -15,7 +15,7 @@ Este documento contiene la documentación completa de los endpoints probados en 
 ```powershell
 $loginData = @{
     username = "admin"
-    password = "123456"
+    password = "admin123"
 } | ConvertTo-Json
 
 Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" -Method POST -Body $loginData -ContentType "application/json"

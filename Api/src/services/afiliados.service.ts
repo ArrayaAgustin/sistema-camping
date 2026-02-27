@@ -38,19 +38,27 @@ export class AfiliadosService {
     console.log('🔍 AfiliadosService.searchAfiliados:', { tipo, q, limit });
 
     try {
+      const text = q?.trim() || '';
+
       // Construir filtros más simples para diagnosticar
       let whereClause: any = {};
 
       if (tipo === 'dni') {
-        whereClause.dni = { contains: q };
+        whereClause.Persona = {
+          dni: { contains: text }
+        };
       } else if (tipo === 'apellido') {
-        whereClause.apellido = { contains: q.toUpperCase() };
+        whereClause.Persona = {
+          apellido: { contains: text, mode: 'insensitive' }
+        };
       } else {
         // general
         whereClause.OR = [
-          { apellido: { contains: q.toUpperCase() } },
-          { nombres: { contains: q.toUpperCase() } },
-          { dni: { contains: q } }
+          { Persona: { apellido: { contains: text, mode: 'insensitive' } } },
+          { Persona: { nombres: { contains: text, mode: 'insensitive' } } },
+          { Persona: { nombre_completo: { contains: text, mode: 'insensitive' } } },
+          { Persona: { dni: { contains: text } } },
+          { cuil: { contains: text } }
         ];
       }
 
@@ -58,7 +66,10 @@ export class AfiliadosService {
 
       const afiliados = await prisma.afiliados.findMany({
         where: whereClause,
-        orderBy: { apellido: 'asc' },
+        include: {
+          Persona: true
+        },
+      //  orderBy: { apellido: 'asc' },
         take: Math.min(limit, 10) // Limitar más para diagnosticar
       });
 
@@ -102,11 +113,12 @@ export class AfiliadosService {
       const afiliados = await prisma.afiliados.findMany({
         where: whereClause,
         include: {
-          Familiares: true
+          Familiares: true,
+          Persona: true
         },
         orderBy: [
-          { apellido: 'asc' },
-          { nombres: 'asc' }
+       //   { apellido: 'asc' },
+      //    { nombres: 'asc' }
         ]
       });
 
@@ -205,7 +217,10 @@ export class AfiliadosService {
 
     try {
       const afiliado = await prisma.afiliados.findUnique({
-        where: { id: afiliadoId }
+        where: { id: afiliadoId },
+        include: {
+          Persona: true
+        }
         // Sin include - solo datos del afiliado
       });
 
@@ -248,7 +263,7 @@ export class AfiliadosService {
           afiliado_id: afiliadoId,
           activo: true 
         },
-        orderBy: { nombre: 'asc' }
+     //   orderBy: { nombre: 'asc' }
       });
 
       return familiares.map(this.mapPrismaToFamiliar);
@@ -267,6 +282,9 @@ export class AfiliadosService {
         where: { 
           id: numero,
           activo: true 
+        },
+        include: {
+          Persona: true
         }
         // Sin include para evitar problemas de tipos
       });
@@ -292,26 +310,28 @@ export class AfiliadosService {
   /**
    * Busca afiliados por documento
    */
-  async getAfiliadosByDocumento(documento: string): Promise<any[]> {
-    try {
-      const afiliados = await prisma.afiliados.findMany({
-        where: { 
-          dni: documento,
-          activo: true 
-        },
-        orderBy: [
-          { apellido: 'asc' },
-          { nombres: 'asc' }
-        ]
-        // Sin include para evitar problemas de tipos
-      });
+async getAfiliadosByDocumento(documento: string): Promise<any[]> {
+  try {
+    const afiliados = await prisma.afiliados.findMany({
+      where: {
+        activo: true,
+        Persona: {
+          dni: documento
+        }
+      },
+      include: {
+        Persona: true
+      }
+    });
 
-      return afiliados.map(this.mapPrismaToAfiliado);
-    } catch (error) {
-      console.error('Error getting afiliados by documento:', error);
-      throw new Error('Error retrieving afiliados by documento');
-    }
+    return afiliados.map(this.mapPrismaToAfiliado);
+  } catch (error) {
+    console.error('Error getting afiliados by documento:', error);
+    throw new Error('Error retrieving afiliados by documento');
   }
+}
+
+
 
   /**
    * Obtiene estadísticas del padrón de afiliados
@@ -390,34 +410,55 @@ export class AfiliadosService {
   /**
    * Actualiza los datos de un afiliado
    */
-  async updateAfiliado(afiliadoId: number, updateData: Partial<any>): Promise<any> {
-    try {
-      const existingAfiliado = await this.getAfiliadoById(afiliadoId);
-      if (!existingAfiliado) {
-        throw new Error('Afiliado not found');
-      }
+ async updateAfiliado(afiliadoId: number, updateData: Partial<any>): Promise<any> {
+  try {
+    const existingAfiliado = await prisma.afiliados.findUnique({
+      where: { id: afiliadoId },
+      include: { Persona: true }
+    });
 
-      const updatedAfiliado = await prisma.afiliados.update({
-        where: { id: afiliadoId },
+    if (!existingAfiliado) {
+      throw new Error('Afiliado not found');
+    }
+
+    // 1️⃣ Actualizar PERSONA (si hay cambios)
+    if (existingAfiliado.persona_id) {
+      await prisma.personas.update({
+        where: { id: existingAfiliado.persona_id },
         data: {
           apellido: updateData.apellido,
           nombres: updateData.nombres,
           dni: updateData.documento,
           telefono: updateData.telefono,
           email: updateData.email,
-          domicilio: updateData.domicilio,
-          activo: updateData.activo,
           updated_at: new Date()
         }
-        // Sin include para evitar problemas de tipos
       });
-
-      return this.mapPrismaToAfiliado(updatedAfiliado);
-    } catch (error) {
-      console.error('Error updating afiliado:', error);
-      throw new Error('Error updating afiliado');
     }
+
+    // 2️⃣ Actualizar AFILIADO (solo lo que le corresponde)
+    const updatedAfiliado = await prisma.afiliados.update({
+      where: { id: afiliadoId },
+      data: {
+         situacion_sindicato: updateData.situacion_sindicato,
+  situacion_obra_social: updateData.situacion_obra_social,
+  domicilio: updateData.domicilio,
+  activo: updateData.activo,
+  updated_at: new Date()
+      },
+      include: {
+        Persona: true
+      }
+    });
+
+    return this.mapPrismaToAfiliado(updatedAfiliado);
+
+  } catch (error) {
+    console.error('Error updating afiliado:', error);
+    throw new Error('Error updating afiliado');
   }
+}
+
 
   /**
    * Búsqueda avanzada de afiliados
@@ -469,19 +510,16 @@ export class AfiliadosService {
       // Filtros adicionales
       if (text) {
         whereClause.OR = [
-          { apellido: { contains: text.toUpperCase(), mode: 'insensitive' } },
-          { nombres: { contains: text.toUpperCase(), mode: 'insensitive' } },
-          { dni: { contains: text } },
-          { numero_afiliado: { contains: text } }
+          { Persona: { apellido: { contains: text, mode: 'insensitive' } } },
+          { Persona: { nombres: { contains: text, mode: 'insensitive' } } },
+          { Persona: { nombre_completo: { contains: text, mode: 'insensitive' } } },
+          { Persona: { dni: { contains: text } } },
+          { cuil: { contains: text } }
         ];
       }
 
-      if (seccion) {
-        whereClause.seccion = seccion;
-      }
-
-      if (delegacion) {
-        whereClause.delegacion = delegacion;
+      if (seccion || delegacion) {
+        console.warn('⚠️ Filtros seccion/delegacion no aplican al esquema actual');
       }
 
       if (fechaNacimientoDesde || fechaNacimientoHasta) {
@@ -496,15 +534,35 @@ export class AfiliadosService {
 
       // Construir ordenamiento
       const orderBy: any = {};
-      orderBy[sortBy] = sortOrder;
+      const personaSortFields = new Set(['apellido', 'nombres', 'dni', 'nombre_completo']);
+      const afiliadoSortFields = new Set([
+        'cuil',
+        'fecha_nacimiento',
+        'categoria',
+        'situacion_sindicato',
+        'situacion_obra_social',
+        'activo',
+        'created_at',
+        'updated_at'
+      ]);
+
+      if (personaSortFields.has(sortBy)) {
+        orderBy.Persona = { [sortBy]: sortOrder };
+      } else if (afiliadoSortFields.has(sortBy)) {
+        orderBy[sortBy] = sortOrder;
+      } else {
+        orderBy.Persona = { apellido: 'asc' };
+      }
 
       const [afiliados, total] = await Promise.all([
         prisma.afiliados.findMany({
           where: whereClause,
           orderBy,
           take: limit,
-          skip: offset
-          // Sin include para evitar problemas de tipos
+          skip: offset,
+          include: {
+            Persona: true
+          }
         }),
         prisma.afiliados.count({ where: whereClause })
       ]);
@@ -548,18 +606,28 @@ export class AfiliadosService {
    */
   private mapPrismaToAfiliado(prismaAfiliado: any): IAfiliado | IAfiliadoDetailed {
     try {
+      const persona = prismaAfiliado.Persona || prismaAfiliado.persona || null;
+      const dni = persona?.dni || prismaAfiliado.dni || '';
+      const apellido = persona?.apellido || prismaAfiliado.apellido || '';
+      const nombres = persona?.nombres || prismaAfiliado.nombres || '';
+      const telefono = persona?.telefono || prismaAfiliado.telefono || null;
+      const email = persona?.email || prismaAfiliado.email || null;
+      const qrCode = persona?.qr_code || prismaAfiliado.qr_code || null;
+      const fechaNacimiento = persona?.fecha_nacimiento || prismaAfiliado.fecha_nacimiento || null;
+      const sexo = prismaAfiliado.sexo || persona?.sexo || null;
+
       const mapped = {
         id: prismaAfiliado.id || 0,
         cuil: prismaAfiliado.cuil || '',
-        dni: prismaAfiliado.dni || '',
-        apellido: prismaAfiliado.apellido || '',
-        nombres: prismaAfiliado.nombres || '',
+        dni,
+        apellido,
+        nombres,
         numeroAfiliado: prismaAfiliado.numero_afiliado || prismaAfiliado.cuil || '',
         numero_afiliado: prismaAfiliado.numero_afiliado || prismaAfiliado.cuil || '',
-        documento: prismaAfiliado.dni || '',
-        sexo: prismaAfiliado.sexo as 'M' | 'F' | 'X' | null,
+        documento: dni,
+        sexo: sexo as 'M' | 'F' | 'X' | null,
         tipo_afiliado: prismaAfiliado.tipo_afiliado || null,
-        fecha_nacimiento: prismaAfiliado.fecha_nacimiento || null,
+        fecha_nacimiento: fechaNacimiento,
         categoria: prismaAfiliado.categoria || null,
         situacion_sindicato: prismaAfiliado.situacion_sindicato as 'ACTIVO' | 'BAJA' | null,
         situacion_obra_social: prismaAfiliado.situacion_obra_social as 'ACTIVO' | 'BAJA' | null,
@@ -569,11 +637,11 @@ export class AfiliadosService {
         empresa_cuit: prismaAfiliado.empresa_cuit || null,
         empresa_nombre: prismaAfiliado.empresa_nombre || null,
         codigo_postal: prismaAfiliado.codigo_postal || null,
-        telefono: prismaAfiliado.telefono || null,
-        email: prismaAfiliado.email || null,
+        telefono,
+        email,
         grupo_sanguineo: prismaAfiliado.grupo_sanguineo || null,
         foto_url: prismaAfiliado.foto_url || null,
-        qr_code: prismaAfiliado.qr_code || null,
+        qr_code: qrCode,
         padron_version_id: prismaAfiliado.padron_version_id || null,
         activo: prismaAfiliado.activo !== undefined ? prismaAfiliado.activo : true,
         created_at: prismaAfiliado.created_at || null,

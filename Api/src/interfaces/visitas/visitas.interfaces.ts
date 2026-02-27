@@ -7,6 +7,8 @@ import {
   IVisitaDetailed,
   ICreateVisitaRequest,
   ICreateVisitaResponse,
+  ICreateVisitaBatchRequest,
+  ICreateVisitaBatchResponse,
   ISyncVisitasRequest,
   ISyncResponse,
   ID
@@ -17,6 +19,7 @@ import {
  */
 export interface IVisitasController {
   createVisita(req: Request, res: Response): Promise<Response<ICreateVisitaResponse>>;
+  createVisitasBatch(req: Request, res: Response): Promise<Response<ICreateVisitaBatchResponse>>;
   getVisitasByDay(req: Request, res: Response): Promise<Response<IVisitaDetailed[]>>;
 }
 
@@ -25,6 +28,7 @@ export interface IVisitasController {
  */
 export interface IVisitasService {
   createVisita(visitaData: ICreateVisitaRequest, usuarioId: ID): Promise<ICreateVisitaResponse>;
+  createVisitasBatch(batchData: ICreateVisitaBatchRequest, usuarioId: ID): Promise<ICreateVisitaBatchResponse>;
   getVisitasByDay(campingId: ID, fecha: string): Promise<IVisitaDetailed[]>;
   updatePeriodoCajaVisitas(periodoCajaId: ID): Promise<void>;
 }

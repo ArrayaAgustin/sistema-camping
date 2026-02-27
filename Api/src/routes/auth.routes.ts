@@ -39,6 +39,7 @@ router.post('/create-user',
     username: { required: true, type: 'string', minLength: 3, maxLength: 50 },
     email: { required: true, type: 'email' },
     afiliado_id: { required: false, type: 'number' },
+    persona_id: { required: false, type: 'number' },
     activo: { required: false, type: 'boolean' }
   }),
   authController.createUser
@@ -70,10 +71,22 @@ router.post('/change-password',
   authenticateMiddleware, 
   standardRateLimit,
   validateBody({
-    currentPassword: { required: true, type: 'string', minLength: 1 },
+    currentPassword: { required: false, type: 'string' },
     newPassword: { required: true, type: 'string', minLength: 6 }
   }),
   authController.changePassword
+);
+
+// POST /auth/reset-password - Resetear contraseña al DNI (admin)
+router.post('/reset-password',
+  authenticateMiddleware,
+  requireAdmin,
+  standardRateLimit,
+  validateBody({
+    userId: { required: false, type: 'number' },
+    username: { required: false, type: 'string', minLength: 3, maxLength: 50 }
+  }),
+  authController.resetPassword
 );
 
 export default router;

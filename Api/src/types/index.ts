@@ -12,6 +12,9 @@ export * from './auth.types';
 // Afiliados types
 export * from './afiliados.types';
 
+// Personas types
+export * from './personas.types';
+
 // Visitas types
 export * from './visitas.types';
 
@@ -37,3 +40,28 @@ export type {
   IPadronVersion,
   IPadronStats
 } from './afiliados.types';
+
+export type {
+  IPersona,
+  IPersonaBasic,
+  IPersonaCredencial,
+  IPersonaSearchItem,
+  IPersonaFormInput,
+  IPersonaFormUpdateInput,
+  IPersonaFormResult,
+  IPersonaFullResult,
+  IPersonaAfiliadoInput,
+  IPersonaFamiliarInput,
+  IPersonaFamiliarUpdateInput,
+  IPersonaInvitadoInput,
+  IPersonaAfiliadoDetail,
+  IPersonaFamiliarDetail,
+  IPersonaInvitadoDetail,
+  PersonaTipo,
+  PersonaSexoType
+} from './personas.types';
+
+export type {
+  IQRResolveResponse,
+  QRIdentidadTipo 
+} from './qr.types';

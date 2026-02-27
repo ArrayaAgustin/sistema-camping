@@ -8,12 +8,62 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// =========================
+// PERSONAS (IDENTIDAD ÚNICA)
+// =========================
+model personas {
+  id               Int       @id @default(autoincrement())
+  dni              String    @unique(map: "uq_personas_dni") @db.VarChar(8)
+  apellido         String?   @db.VarChar(100)
+  nombres          String?   @db.VarChar(100)
+  nombre_completo  String?   @db.VarChar(200)
+  sexo             sexo_enum?
+  fecha_nacimiento DateTime? @db.Date
+  email            String?   @db.VarChar(100)
+  telefono         String?   @db.VarChar(50)
+  qr_code          String    @unique(map: "uq_personas_qr") @db.VarChar(64)
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  updated_at       DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  
+  Usuario usuarios?
+  Afiliado     afiliados?
+  Familiares   familiares[]
+  Invitaciones invitados[]
+  Visitas      visitas[]
+
+  @@index([apellido], map: "idx_personas_apellido")
+  @@index([dni], map: "idx_personas_dni")
+  @@map("personas")
+}
+
+// =========================
+// INVITADOS (PERMISOS)
+// =========================
+model invitados {
+  id               Int       @id @default(autoincrement())
+  persona_id       Int
+  vigente_desde    DateTime? @db.Date
+  vigente_hasta    DateTime? @db.Date
+  aplica_a_familia Boolean?  @default(true)
+  activo           Boolean?  @default(true)
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  updated_at       DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+
+  Persona personas @relation(fields: [persona_id], references: [id], onDelete: Cascade)
+
+  @@index([activo], map: "idx_invitados_activo")
+  @@index([persona_id], map: "idx_invitados_persona")
+  @@index([vigente_hasta], map: "idx_invitados_vigencia")
+  @@map("invitados")
+}
+
+// =========================
+// AFILIADOS (PADRÓN)
+// =========================
 model afiliados {
   id                    Int                         @id @default(autoincrement()) @map("id")
+ persona_id Int? @unique(map: "uq_afiliados_persona")
   cuil                  String                      @unique(map: "cuil") @db.VarChar(11)
-  dni                   String                      @unique(map: "dni") @db.VarChar(8)
-  apellido              String                      @db.VarChar(100)
-  nombres               String                      @db.VarChar(100)
   sexo                  sexo_enum
   tipo_afiliado         String?                     @db.VarChar(50)
   fecha_nacimiento      DateTime?                   @db.Date
@@ -26,74 +76,76 @@ model afiliados {
   empresa_cuit          String?                     @db.VarChar(11)
   empresa_nombre        String?                     @db.VarChar(200)
   codigo_postal         String?                     @db.VarChar(10)
-  telefono              String?                     @db.VarChar(50)
-  email                 String?                     @db.VarChar(100)
   grupo_sanguineo       String?                     @db.VarChar(5)
   foto_url              String?                     @db.VarChar(255)
-  qr_code               String?                     @db.Text
   padron_version_id     Int?
   activo                Boolean?                    @default(true)
   created_at            DateTime?                   @default(now()) @db.Timestamp(0)
   updated_at            DateTime?                   @default(now()) @updatedAt @db.Timestamp(0)
-  PadronVersion         padron_versiones?           @relation(fields: [padron_version_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "afiliados_ibfk_1")
-  Familiares            familiares[]                @relation("titular")
-  Usuarios              usuarios[]                  @relation("afiliado_usuario")
-  Visitas               visitas[]                   @relation("afiliado_visita")
+
+  Persona       personas?         @relation(fields: [persona_id], references: [id], onDelete: SetNull)
+  PadronVersion padron_versiones? @relation(fields: [padron_version_id], references: [id])
+  Familiares    familiares[]      @relation("titular")
+  Usuarios      usuarios[]        @relation("afiliado_usuario")
+  Visitas       visitas[]         @relation("afiliado_visita")
 
   @@index([activo], map: "idx_activo")
-  @@index([apellido], map: "idx_apellido")
-  @@index([apellido, nombres], map: "idx_apellido_nombres")
   @@index([cuil], map: "idx_cuil")
-  @@index([dni], map: "idx_dni")
   @@index([empresa_cuit], map: "idx_empresa_cuit")
-  @@index([apellido, nombres, dni], map: "idx_fulltext_search")
-  @@index([nombres], map: "idx_nombres")
   @@index([padron_version_id], map: "idx_padron_version")
+  @@index([persona_id], map: "idx_persona_id")
   @@index([situacion_sindicato], map: "idx_situacion_sindicato")
   @@map("afiliados")
 }
 
+// =========================
+// FAMILIARES
+// =========================
 model familiares {
-  id               Int       @id @default(autoincrement())
-  afiliado_id      Int
-  nombre           String    @db.VarChar(200)
-  dni              String?   @db.VarChar(8)
-  fecha_nacimiento DateTime? @db.Date
-  edad             Int?
-  estudia          Boolean?  @default(false)
-  discapacitado    Boolean?  @default(false)
-  baja             Boolean?  @default(false)
-  qr_code          String?   @db.Text
-  activo           Boolean?  @default(true)
-  created_at       DateTime? @default(now()) @db.Timestamp(0)
-  updated_at       DateTime? @default(now()) @updatedAt @db.Timestamp(0)
-  Afiliado         afiliados @relation("titular", fields: [afiliado_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "familiares_ibfk_1")
+  id            Int       @id @default(autoincrement())
+  persona_id    Int?
+  afiliado_id   Int
+  estudia       Boolean?  @default(false)
+  discapacitado Boolean?  @default(false)
+  baja          Boolean?  @default(false)
+  activo        Boolean?  @default(true)
+  created_at    DateTime? @default(now()) @db.Timestamp(0)
+  updated_at    DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+
+  Persona  personas? @relation(fields: [persona_id], references: [id], onDelete: SetNull)
+  Afiliado afiliados @relation("titular", fields: [afiliado_id], references: [id], onDelete: Cascade)
 
   @@index([afiliado_id, activo], map: "idx_afiliado_activo")
   @@index([afiliado_id], map: "idx_afiliado_id")
+  @@index([persona_id], map: "idx_familiares_persona")
   @@index([baja], map: "idx_baja")
-  @@index([dni], map: "idx_dni")
-  @@index([nombre], map: "idx_nombre")
   @@map("familiares")
 }
 
+// =========================
+// USUARIOS
+// =========================
 model usuarios {
   id                 Int                @id @default(autoincrement())
   username           String             @unique(map: "username") @db.VarChar(50)
   password_hash      String             @db.VarChar(255)
   email              String?            @db.VarChar(100)
-  afiliado_id        Int?
+  afiliado_id        Int?  
+  persona_id         Int?               @unique 
+  must_change_password Boolean?         @default(false)
   activo             Boolean?           @default(true)
   ultimo_acceso      DateTime?          @db.Timestamp(0)
   created_at         DateTime?          @default(now()) @db.Timestamp(0)
   updated_at         DateTime?          @default(now()) @updatedAt @db.Timestamp(0)
+
   AuditoriaPadron    auditoria_padron[]
-  PeriodosApertura   periodos_caja[]    @relation("usuario_apertura")
-  PeriodosCierre     periodos_caja[]    @relation("usuario_cierre")
+  PeriodosApertura   periodos_caja[] @relation("usuario_apertura")
+  PeriodosCierre     periodos_caja[] @relation("usuario_cierre")
   SyncLogs           sync_logs[]
   UsuarioRoles       usuario_roles[]
-  Afiliado           afiliados?         @relation("afiliado_usuario", fields: [afiliado_id], references: [id], onUpdate: NoAction, map: "usuarios_ibfk_1")
-  VisitasRegistradas visitas[]          @relation("usuario_registro")
+  Afiliado           afiliados? @relation("afiliado_usuario", fields: [afiliado_id], references: [id])
+  Persona  personas?  @relation(fields: [persona_id], references: [id])
+  VisitasRegistradas visitas[] @relation("usuario_registro")
 
   @@index([activo], map: "idx_activo")
   @@index([afiliado_id], map: "idx_afiliado")
@@ -101,12 +153,16 @@ model usuarios {
   @@map("usuarios")
 }
 
+// =========================
+// ROLES
+// =========================
 model roles {
-  id           Int             @id @default(autoincrement())
-  nombre       String          @unique(map: "nombre") @db.VarChar(50)
-  descripcion  String?         @db.Text
+  id           Int       @id @default(autoincrement())
+  nombre       String    @unique(map: "nombre") @db.VarChar(50)
+  descripcion  String?   @db.Text
   permisos     Json?
-  created_at   DateTime?       @default(now()) @db.Timestamp(0)
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+
   UsuarioRoles usuario_roles[]
 
   @@map("roles")
@@ -119,87 +175,97 @@ model usuario_roles {
   camping_id       Int?
   activo           Boolean?  @default(true)
   fecha_asignacion DateTime? @default(now()) @db.Timestamp(0)
-  Usuario          usuarios  @relation(fields: [usuario_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "usuario_roles_ibfk_1")
-  Role             roles     @relation(fields: [rol_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "usuario_roles_ibfk_2")
-  Camping          campings? @relation(fields: [camping_id], references: [id], onUpdate: NoAction, map: "usuario_roles_ibfk_3")
+
+  Usuario usuarios @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  Role    roles    @relation(fields: [rol_id], references: [id], onDelete: Cascade)
+  Camping campings? @relation(fields: [camping_id], references: [id])
 
   @@unique([usuario_id, rol_id, camping_id], map: "unique_usuario_rol_camping")
-  @@index([camping_id], map: "idx_camping")
-  @@index([rol_id], map: "idx_rol")
-  @@index([usuario_id], map: "idx_usuario")
   @@map("usuario_roles")
 }
 
+// =========================
+// PADRÓN VERSIONES
+// =========================
 model padron_versiones {
-  id                  Int         @id @default(autoincrement())
-  version             String      @unique(map: "version") @db.VarChar(50)
-  fecha_actualizacion DateTime    @db.Timestamp(0)
-  total_afiliados     Int?        @default(0)
-  total_familiares    Int?        @default(0)
-  descripcion         String?     @db.Text
-  hash_checksum       String?     @db.VarChar(64)
+  id                  Int       @id @default(autoincrement())
+  version             String    @unique(map: "version") @db.VarChar(50)
+  fecha_actualizacion DateTime  @db.Timestamp(0)
+  total_afiliados     Int?      @default(0)
+  total_familiares    Int?      @default(0)
+  descripcion         String?   @db.Text
+  hash_checksum       String?   @db.VarChar(64)
   usuario_carga_id    Int?
-  activo              Boolean?    @default(true)
-  created_at          DateTime?   @default(now()) @db.Timestamp(0)
-  Afiliados           afiliados[]
+  activo              Boolean?  @default(true)
+  created_at          DateTime? @default(now()) @db.Timestamp(0)
 
-  @@index([activo], map: "idx_activo")
-  @@index([fecha_actualizacion], map: "idx_fecha")
-  @@index([version], map: "idx_version")
+  Afiliados afiliados[]
+
   @@map("padron_versiones")
 }
 
+// =========================
+// CAMPINGS
+// =========================
 model campings {
-  id           Int             @id @default(autoincrement())
-  nombre       String          @db.VarChar(200)
-  ubicacion    String?         @db.VarChar(255)
-  provincia    String?         @db.VarChar(100)
-  localidad    String?         @db.VarChar(100)
-  telefono     String?         @db.VarChar(50)
-  email        String?         @db.VarChar(100)
-  activo       Boolean?        @default(true)
-  created_at   DateTime?       @default(now()) @db.Timestamp(0)
-  updated_at   DateTime?       @default(now()) @updatedAt @db.Timestamp(0)
+  id           Int       @id @default(autoincrement())
+  nombre       String    @db.VarChar(200)
+  descripcion  String?   @db.Text
+  ubicacion    String?   @db.VarChar(255)
+  provincia    String?   @db.VarChar(100)
+  localidad    String?   @db.VarChar(100)
+  telefono     String?   @db.VarChar(50)
+  email        String?   @db.VarChar(100)
+  latitud      Decimal?  @db.Decimal(10, 7)
+  longitud     Decimal?  @db.Decimal(10, 7)
+  foto_url     String?   @db.Text
+  activo       Boolean?  @default(true)
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+  updated_at   DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+
   PeriodosCaja periodos_caja[] @relation("camping_periodo")
   SyncLogs     sync_logs[]
   UsuarioRoles usuario_roles[]
-  Visitas      visitas[]       @relation("camping_visita")
+  Visitas      visitas[] @relation("camping_visita")
 
-  @@index([activo], map: "idx_activo")
-  @@index([nombre], map: "idx_nombre")
   @@map("campings")
 }
 
+// =========================
+// VISITAS
+// =========================
 model visitas {
-  id                  Int            @id @default(autoincrement())
-  uuid                String         @unique(map: "uuid") @db.VarChar(36)
-  afiliado_id         Int
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique(map: "uuid") @db.VarChar(36)
+  persona_id          Int?
+  afiliado_id         Int?
   camping_id          Int
   periodo_caja_id     Int?
   usuario_registro_id Int
-  fecha_ingreso       DateTime?      @default(now()) @db.Timestamp(0)
-  fecha_egreso        DateTime?      @db.Timestamp(0)
-  acompanantes        Json?
-  observaciones       String?        @db.Text
-  sincronizado        Boolean?       @default(true)
-  registro_offline    Boolean?       @default(false)
-  created_at          DateTime?      @default(now()) @db.Timestamp(0)
-  updated_at          DateTime?      @default(now()) @updatedAt @db.Timestamp(0)
-  Afiliado            afiliados      @relation("afiliado_visita", fields: [afiliado_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "visitas_ibfk_1")
-  Camping             campings       @relation("camping_visita", fields: [camping_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "visitas_ibfk_2")
-  PeriodoCaja         periodos_caja? @relation(fields: [periodo_caja_id], references: [id], onUpdate: NoAction, map: "visitas_ibfk_3")
-  UsuarioReg          usuarios       @relation("usuario_registro", fields: [usuario_registro_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "visitas_ibfk_4")
 
-  @@index([afiliado_id], map: "idx_afiliado")
-  @@index([camping_id, fecha_ingreso], map: "idx_camping_fecha")
-  @@index([fecha_ingreso], map: "idx_fecha_ingreso")
-  @@index([periodo_caja_id], map: "idx_periodo")
-  @@index([sincronizado], map: "idx_sincronizado")
-  @@index([uuid], map: "idx_uuid")
-  @@index([usuario_registro_id], map: "usuario_registro_id")
+  condicion_ingreso condicion_ingreso_enum? @default(DESCONOCIDO)
+
+  fecha_ingreso    DateTime? @default(now()) @db.Timestamp(0)
+  fecha_egreso     DateTime? @db.Timestamp(0)
+  acompanantes     Json?
+  observaciones    String?  @db.Text
+  sincronizado     Boolean? @default(true)
+  registro_offline Boolean? @default(false)
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  updated_at       DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+
+  Persona     personas?      @relation(fields: [persona_id], references: [id])
+  Afiliado    afiliados?     @relation("afiliado_visita", fields: [afiliado_id], references: [id])
+  Camping     campings       @relation("camping_visita", fields: [camping_id], references: [id])
+  PeriodoCaja periodos_caja? @relation(fields: [periodo_caja_id], references: [id])
+  UsuarioReg  usuarios       @relation("usuario_registro", fields: [usuario_registro_id], references: [id])
+
   @@map("visitas")
 }
 
+// =========================
+// PERIODOS CAJA
+// =========================
 model periodos_caja {
   id                  Int       @id @default(autoincrement())
   camping_id          Int
@@ -211,70 +277,71 @@ model periodos_caja {
   observaciones       String?   @db.Text
   sincronizado        Boolean?  @default(true)
   activo              Boolean?  @default(true)
-  Camping             campings  @relation("camping_periodo", fields: [camping_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "periodos_caja_ibfk_1")
-  UsuarioApertura     usuarios  @relation("usuario_apertura", fields: [usuario_apertura_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "periodos_caja_ibfk_2")
-  UsuarioCierre       usuarios? @relation("usuario_cierre", fields: [usuario_cierre_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "periodos_caja_ibfk_3")
-  Visitas             visitas[]
 
-  @@index([activo], map: "idx_activo")
-  @@index([camping_id, fecha_apertura], map: "idx_camping_fecha")
-  @@index([sincronizado], map: "idx_sincronizado")
-  @@index([usuario_apertura_id], map: "usuario_apertura_id")
-  @@index([usuario_cierre_id], map: "usuario_cierre_id")
+  Camping         campings @relation("camping_periodo", fields: [camping_id], references: [id])
+  UsuarioApertura usuarios @relation("usuario_apertura", fields: [usuario_apertura_id], references: [id])
+  UsuarioCierre   usuarios? @relation("usuario_cierre", fields: [usuario_cierre_id], references: [id])
+  Visitas         visitas[]
+
   @@map("periodos_caja")
 }
 
+// =========================
+// SYNC LOGS
+// =========================
 model sync_logs {
-  id                      Int               @id @default(autoincrement())
+  id                      Int       @id @default(autoincrement())
   usuario_id              Int
   camping_id              Int?
   tipo                    sync_tipo_enum
-  registros_sincronizados Int?              @default(0)
-  fecha_sync              DateTime?         @default(now()) @db.Timestamp(0)
+  registros_sincronizados Int?      @default(0)
+  fecha_sync              DateTime? @default(now()) @db.Timestamp(0)
   estado                  sync_estado_enum? @default(success)
   errores                 Json?
   detalles                Json?
-  Usuario                 usuarios          @relation(fields: [usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sync_logs_ibfk_1")
-  Camping                 campings?         @relation(fields: [camping_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "sync_logs_ibfk_2")
 
-  @@index([camping_id, fecha_sync], map: "idx_camping_fecha")
-  @@index([estado], map: "idx_estado")
-  @@index([tipo], map: "idx_tipo")
-  @@index([usuario_id, fecha_sync], map: "idx_usuario_fecha")
+  Usuario usuarios @relation(fields: [usuario_id], references: [id])
+  Camping campings? @relation(fields: [camping_id], references: [id])
+
   @@map("sync_logs")
 }
 
+// =========================
+// AUDITORÍA
+// =========================
 model auditoria_padron {
-  id               Int                   @id @default(autoincrement())
+  id               Int       @id @default(autoincrement())
   usuario_id       Int
   accion           auditoria_accion_enum
-  tabla            String                @db.VarChar(50)
+  tabla            String    @db.VarChar(50)
   registro_id      Int
   datos_anteriores Json?
   datos_nuevos     Json?
-  ip_address       String?               @db.VarChar(45)
-  created_at       DateTime?             @default(now()) @db.Timestamp(0)
-  Usuario          usuarios              @relation(fields: [usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "auditoria_padron_ibfk_1")
+  ip_address       String?   @db.VarChar(45)
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
 
-  @@index([accion], map: "idx_accion")
-  @@index([created_at], map: "idx_fecha")
-  @@index([tabla, registro_id], map: "idx_tabla_registro")
-  @@index([usuario_id], map: "idx_usuario")
+  Usuario usuarios @relation(fields: [usuario_id], references: [id])
+
   @@map("auditoria_padron")
 }
 
+// =========================
+// CONFIG
+// =========================
 model configuracion_sistema {
-  id          Int               @id @default(autoincrement())
-  clave       String            @unique(map: "clave") @db.VarChar(100)
-  valor       String?           @db.Text
+  id          Int       @id @default(autoincrement())
+  clave       String    @unique(map: "clave") @db.VarChar(100)
+  valor       String?   @db.Text
   tipo        config_tipo_enum? @default(string)
-  descripcion String?           @db.Text
-  updated_at  DateTime?         @default(now()) @updatedAt @db.Timestamp(0)
+  descripcion String?   @db.Text
+  updated_at  DateTime? @default(now()) @updatedAt @db.Timestamp(0)
 
-  @@index([clave], map: "idx_clave")
   @@map("configuracion_sistema")
 }
 
+// =========================
+// ENUMS
+// =========================
 enum sexo_enum {
   M
   F
@@ -317,4 +384,11 @@ enum config_tipo_enum {
   number
   boolean
   json
+}
+
+enum condicion_ingreso_enum {
+  AFILIADO
+  FAMILIAR
+  INVITADO
+  DESCONOCIDO
 }

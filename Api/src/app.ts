@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { config } from './config';
 
@@ -8,6 +9,7 @@ import apiRoutes from './routes';
 
 // Middleware para respuestas extendidas
 import { extendResponse } from './middlewares';
+import { qrController } from 'controllers';
 
 /**
  * Configuración principal de la aplicación Express
@@ -87,6 +89,8 @@ app.use(express.json({
   type: 'application/json'
 }));
 
+app.use(cookieParser());
+
 app.use(express.urlencoded({ 
   extended: true,
   limit: '2mb'
@@ -138,6 +142,7 @@ console.log('   🔄 /api/sync/* (TypeScript ✅)');
 console.log('   💰 /api/periodos-caja/* (Turnos/Caja ✅)');
 console.log('   📊 /api/health (Health check)');
 console.log('   📚 /api/docs (Documentación)');
+console.log('   📚 /api/qr (QR)');
 
 // Middleware de manejo de errores 404
 app.use('*', (req: Request, res: Response) => {
@@ -150,7 +155,8 @@ app.use('*', (req: Request, res: Response) => {
       visitas: '/visitas',
       sync: '/sync',
       health: '/',
-      info: '/api/info'
+      info: '/api/info',
+      qr: '/qr'
     },
     timestamp: new Date().toISOString()
   });

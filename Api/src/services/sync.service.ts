@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma-config';
+import { Prisma } from '@prisma/client';
 import { ISyncService } from '../interfaces/visitas/visitas.interfaces';
 import { 
   ISyncVisitasRequest,
@@ -32,19 +33,27 @@ export class SyncService implements ISyncService {
           continue; // Ya existe, saltar
         }
 
+        const afiliado = await prisma.afiliados.findUnique({
+          where: { id: item.afiliadoId }
+        });
+
+        const data: Prisma.visitasUncheckedCreateInput = {
+          uuid: item.uuid,
+          afiliado_id: item.afiliadoId,
+          persona_id: afiliado?.persona_id || null,
+          camping_id: campingId,
+          periodo_caja_id: item.periodoCajaId || null,
+          usuario_registro_id: usuarioId,
+          condicion_ingreso: 'AFILIADO',
+          fecha_ingreso: item.fechaIngreso ? new Date(item.fechaIngreso) : undefined,
+          acompanantes: item.acompanantes ? JSON.stringify(item.acompanantes) : '[]',
+          observaciones: item.observaciones || '',
+          registro_offline: true,
+          sincronizado: true
+        };
+
         await prisma.visitas.create({
-          data: {
-            uuid: item.uuid,
-            afiliado_id: item.afiliadoId,
-            camping_id: campingId,
-            periodo_caja_id: item.periodoCajaId || null,
-            usuario_registro_id: usuarioId,
-            fecha_ingreso: item.fechaIngreso ? new Date(item.fechaIngreso) : undefined,
-            acompanantes: item.acompanantes ? JSON.stringify(item.acompanantes) : '[]',
-            observaciones: item.observaciones || '',
-            registro_offline: true,
-            sincronizado: true
-          }
+          data
         });
         
         sincronizadas++;

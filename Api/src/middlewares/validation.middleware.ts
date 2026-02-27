@@ -298,6 +298,56 @@ export const ValidationSchemas = {
     offset: { required: false, type: 'number' as const, min: 0 }
   },
 
+  // Búsqueda de personas
+  searchPersonas: {
+    q: { required: false, type: 'string' as const, maxLength: 100 },
+    limit: { required: false, type: 'number' as const, min: 1, max: 100 }
+  },
+
+  // Búsqueda de titular por DNI
+  searchTitular: {
+    dni: { required: true, type: 'string' as const, minLength: 7, maxLength: 12 }
+  },
+
+  // Parámetro DNI
+  dniParam: {
+    dni: { required: true, type: 'string' as const, minLength: 7, maxLength: 12 }
+  },
+
+  // Alta de persona (identidad base)
+  createPersona: {
+    dni: { required: true, type: 'string' as const, minLength: 7, maxLength: 12 },
+    apellido: { required: false, type: 'string' as const, minLength: 1, maxLength: 100 },
+    nombres: { required: false, type: 'string' as const, minLength: 1, maxLength: 100 },
+    nombre_completo: { required: false, type: 'string' as const, minLength: 1, maxLength: 200 },
+    sexo: { required: false, type: 'string' as const, enum: ['M', 'F', 'X'] },
+    fecha_nacimiento: { required: false, type: 'string' as const, maxLength: 30 },
+    email: { required: false, type: 'email' as const },
+    telefono: { required: false, type: 'string' as const, maxLength: 50 },
+    qr_code: { required: false, type: 'string' as const, maxLength: 64 },
+    tipo: { required: false, type: 'string' as const, enum: ['AFILIADO', 'FAMILIAR', 'INVITADO'] },
+    afiliado: { required: false, type: 'object' as const },
+    familiar: { required: false, type: 'object' as const },
+    invitado: { required: false, type: 'object' as const }
+  },
+
+  // Edición de persona (formulario general)
+  updatePersona: {
+    dni: { required: false, type: 'string' as const, minLength: 7, maxLength: 12 },
+    apellido: { required: false, type: 'string' as const, minLength: 1, maxLength: 100 },
+    nombres: { required: false, type: 'string' as const, minLength: 1, maxLength: 100 },
+    nombre_completo: { required: false, type: 'string' as const, minLength: 1, maxLength: 200 },
+    sexo: { required: false, type: 'string' as const, enum: ['M', 'F', 'X'] },
+    fecha_nacimiento: { required: false, type: 'string' as const, maxLength: 30 },
+    email: { required: false, type: 'email' as const },
+    telefono: { required: false, type: 'string' as const, maxLength: 50 },
+    qr_code: { required: false, type: 'string' as const, maxLength: 64 },
+    tipo: { required: false, type: 'string' as const, enum: ['AFILIADO', 'FAMILIAR', 'INVITADO'] },
+    afiliado: { required: false, type: 'object' as const },
+    familiar: { required: false, type: 'object' as const },
+    invitado: { required: false, type: 'object' as const }
+  },
+
   // Parámetros ID
   idParam: {
     id: { 

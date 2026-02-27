@@ -91,7 +91,7 @@ export class RateLimitMiddleware implements IRateLimitMiddleware {
   async loginLimit(req: Request, res: Response, next: NextFunction): Promise<void | Response> {
     return this.applyRateLimit({
       windowMs: 15 * 60 * 1000, // 15 minutos
-      maxRequests: 5,            // 5 intentos de login por ventana
+      maxRequests: 20,           // 20 intentos de login por ventana
       message: 'Too many login attempts. Please wait 15 minutes before trying again'
     })(req, res, next);
   }
@@ -209,7 +209,7 @@ export const RateLimitConfigs = {
   // Login - Muy restrictivo para prevenir ataques de fuerza bruta
   login: {
     windowMs: 15 * 60 * 1000, // 15 minutos
-    maxRequests: 5,            // 5 intentos por ventana
+    maxRequests: 20,           // 20 intentos por ventana
     message: 'Too many login attempts. Please try again in 15 minutes',
     skipSuccessfulRequests: true // No contar logins exitosos
   },

@@ -4,7 +4,11 @@ import afiliadosRoutes from './afiliados.routes';
 import visitasRoutes from './visitas.routes';
 import syncRoutes from './sync.routes';
 import periodosCajaRoutes from './periodos-caja.routes';
+import qrRoutes from './qr.routes';
+import personasRoutes from './personas.routes';
+import campingsRoutes from './campings.routes';
 
+import usuariosRoutes from './usuarios.routes'; // Importar rutas de usuarios
 
 // Importar rutas legacy (JavaScript) que aún no se han migrado
 //const visitasRoutes = require('./visitas');
@@ -30,9 +34,18 @@ router.use('/sync', syncRoutes);
 // Rutas de períodos de caja (TypeScript)
 router.use('/periodos-caja', periodosCajaRoutes);
 
+router.use('/usuarios', usuariosRoutes); // Agregar ruta de usuarios
+// Rutas de personas (TypeScript)
+router.use('/personas', personasRoutes);
+
+// Rutas de campings (TypeScript)
+router.use('/campings', campingsRoutes);
+
 // Rutas legacy (JavaScript) - TODO: Migrar a TypeScript
 //router.use('/visitas', visitasRoutes);
 //router.use('/sync', syncRoutes);
+
+router.use('/qr', qrRoutes);
 
 // Ruta de health check
 router.get('/health', (req, res) => {
@@ -48,7 +61,10 @@ router.get('/health', (req, res) => {
       afiliados: '/afiliados',
       visitas: '/visitas',
       sync: '/sync',
-      periodosCaja: '/periodos-caja'
+      periodosCaja: '/periodos-caja',
+      usuarios: '/usuarios', // Exponer nuevos endpoints de usuarios
+      personas: '/personas',
+      qr: '/qr'
     }
   });
 });
@@ -80,8 +96,16 @@ router.get('/docs', (req, res) => {
         stats: 'GET /afiliados/stats/padron',
         version: 'GET /afiliados/version/padron'
       },
+      personas: {
+        search: 'GET /personas/search?q=...&limit=...',
+        titular: 'GET /personas/titular?dni=...',
+        create: 'POST /personas',
+        getById: 'GET /personas/:id',
+        update: 'PUT /personas/:id'
+      },
       visitas: {
         create: 'POST /visitas',
+        createBatch: 'POST /visitas/batch',
         getByDay: 'GET /visitas/dia?camping_id=X&fecha=YYYY-MM-DD'
       },
       sync: {
@@ -93,6 +117,9 @@ router.get('/docs', (req, res) => {
         activo: 'GET /periodos-caja/activo?camping_id=X',
         getPeriodo: 'GET /periodos-caja/:id',
         historial: 'GET /periodos-caja/historial?camping_id=X&limite=20'
+      },
+      qr: {
+        resolve: 'GET /qr/resolve?code=XXXX'
       },
       util: {
         health: 'GET /health',

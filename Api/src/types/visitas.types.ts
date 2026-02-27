@@ -7,22 +7,30 @@ import { ID, Timestamp } from './common.types';
 export interface IVisita {
   id: ID;
   uuid: string;
-  afiliado_id: ID;
+  afiliado_id?: ID | null;
+  persona_id?: ID | null;
   camping_id: ID;
   periodo_caja_id?: ID | null;
   usuario_registro_id: ID;
-  fecha_ingreso: Timestamp;
-  acompanantes: string; // JSON string
-  observaciones: string;
-  registro_offline: boolean;
-  sincronizado: boolean;
-  created_at: Timestamp;
-  updated_at: Timestamp;
+
+  condicion_ingreso?: 'AFILIADO' | 'FAMILIAR' | 'INVITADO' | 'DESCONOCIDO' | null;
+
+  fecha_ingreso: Timestamp | null;
+  fecha_egreso?: Timestamp | null;         // si existe en tu tabla
+  acompanantes: any | null;                // ✅ JsonValue compatible
+  observaciones: string | null;            // si en DB puede ser null
+  registro_offline: boolean | null;        // ✅
+  sincronizado: boolean | null;            // ✅
+
+  created_at: Timestamp | null;            // si prisma los marca null
+  updated_at: Timestamp | null;            // si prisma los marca null
 }
+
 
 // Datos para crear una visita
 export interface ICreateVisitaRequest {
-  afiliado_id: ID;
+  afiliado_id?: ID;
+  persona_id?: ID; 
   camping_id: ID;
   periodo_caja_id?: ID | null;
   acompanantes?: any[] | null;
@@ -36,9 +44,35 @@ export interface ICreateVisitaResponse {
   uuid: string;
 }
 
+// Item para batch de visitas
+export interface ICreateVisitaBatchItem {
+  persona_id: ID;
+  condicion_ingreso: 'AFILIADO' | 'FAMILIAR' | 'INVITADO';
+}
+
+// Request batch
+export interface ICreateVisitaBatchRequest {
+  camping_id: ID;
+  periodo_caja_id?: ID | null;
+  personas: ICreateVisitaBatchItem[];
+  observaciones?: string;
+  registro_offline?: boolean;
+}
+
+// Respuesta batch
+export interface ICreateVisitaBatchResponse {
+  total: number;
+  created: number;
+  failed: number;
+  results: Array<
+    | { ok: true; persona_id: ID; visita_id: ID; uuid: string }
+    | { ok: false; persona_id: ID; error: string }
+  >;
+}
+
 // Visita con datos del afiliado
 export interface IVisitaDetailed extends IVisita {
-  Afiliado: {
+  Afiliado?: {
     dni: string;
     apellido: string;
     nombres: string;

@@ -66,7 +66,7 @@ export class AuthService implements IAuthService {
           } else if (typeof perms === 'string') {
             const parsed = JSON.parse(perms);
             if (Array.isArray(parsed)) {
-              parsed.forEach(p => permisosSet.add(p));
+              parsed.forEach(p => p && typeof p === 'string' && permisosSet.add(p));
             }
           }
         } catch (error) {
@@ -87,10 +87,11 @@ export class AuthService implements IAuthService {
       id: user.id,
       username: user.username,
       email: user.email || '',
-      afiliado_id: user.afiliado_id,
+      afiliado_id: null,
       roles: roles as Role[],
       permisos: permisos as Permission[],
       activo: user.activo || undefined,
+      must_change_password: user.must_change_password || undefined,
       ultimo_acceso: user.ultimo_acceso || undefined,
       created_at: user.created_at || undefined,
       updated_at: user.updated_at || undefined
@@ -105,9 +106,11 @@ export class AuthService implements IAuthService {
         username: userData.username,
         email: userData.email,
         afiliado_id: userData.afiliado_id,
+        persona_id: user.persona_id ?? undefined,
         roles: userData.roles,
         permisos: userData.permisos,
-        activo: userData.activo
+        activo: userData.activo,
+        must_change_password: userData.must_change_password
       },
       timestamp: new Date().toISOString()
     };
@@ -162,10 +165,11 @@ export class AuthService implements IAuthService {
       id: newUser.id,
       username: newUser.username,
       email: newUser.email || '',
-      afiliado_id: newUser.afiliado_id,
+      afiliado_id: newUser.afiliado_id || null,
       roles: [],
       permisos: [],
       activo: newUser.activo || undefined,
+      must_change_password: (newUser as any).must_change_password || undefined,
       ultimo_acceso: newUser.ultimo_acceso || undefined,
       created_at: newUser.created_at || undefined,
       updated_at: newUser.updated_at || undefined
@@ -185,15 +189,39 @@ export class AuthService implements IAuthService {
   async createUser(userData: IRegisterRequest): Promise<ICreateUserResponse> {
     // TODO: Implementar verificación de permisos de admin si es necesario
     
-    const { username, email, password, afiliado_id } = userData;
+    const { username, email, password, afiliado_id, persona_id } = userData;
 
     if (!userData.username || !userData.email) {
       throw new Error('Username and email are required');
     }
 
-    // Generar contraseña temporal
-    const temporaryPassword = HashUtil.generateSecurePassword(12);
-    const passwordHash = await HashUtil.hashPassword(temporaryPassword);
+    let resolvedPersonaId = persona_id ?? null;
+
+    if (!resolvedPersonaId && afiliado_id) {
+      const afiliado = await prisma.afiliados.findUnique({ where: { id: afiliado_id } });
+      if (afiliado?.persona_id) {
+        resolvedPersonaId = afiliado.persona_id;
+      }
+    }
+
+    if (!resolvedPersonaId) {
+      throw new Error('persona_id es requerido para crear usuario');
+    }
+
+    const existingByPersona = await prisma.usuarios.findFirst({
+      where: { persona_id: resolvedPersonaId }
+    });
+
+    if (existingByPersona) {
+      throw new Error('Ya existe un usuario para esta persona');
+    }
+
+    const rawPassword = password || await this.getDniOrFallback({
+      ...userData,
+      persona_id: resolvedPersonaId,
+      afiliado_id: undefined
+    });
+    const passwordHash = await HashUtil.hashPassword(rawPassword);
 
     // Crear usuario
     const newUser = await prisma.usuarios.create({
@@ -201,8 +229,10 @@ export class AuthService implements IAuthService {
         username: userData.username.toLowerCase(),
         email: userData.email,
         password_hash: passwordHash,
-        afiliado_id: userData.afiliado_id || null,
-        activo: true
+        afiliado_id: null,
+        persona_id: resolvedPersonaId,
+        activo: true,
+        must_change_password: true
       }
     });
 
@@ -218,6 +248,79 @@ export class AuthService implements IAuthService {
         activo: newUser.activo
       }
     };
+  }
+
+  /**
+   * Resetea contraseña al DNI asociado y fuerza cambio
+   */
+  async resetPasswordToDni(userId?: number, username?: string): Promise<{ userId: number; username: string; password: string }> {
+    if (!userId && !username) {
+      throw new Error('userId o username es requerido');
+    }
+
+    const user = userId
+      ? await prisma.usuarios.findUnique({ where: { id: userId } })
+      : await prisma.usuarios.findUnique({ where: { username: username!.toLowerCase() } });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const dni = await this.resolveDniFromUser(user.id, user.persona_id, user.afiliado_id);
+    if (!dni) {
+      throw new Error('No se pudo resolver DNI para el usuario');
+    }
+
+    const passwordHash = await HashUtil.hashPassword(dni);
+
+    await prisma.usuarios.update({
+      where: { id: user.id },
+      data: {
+        password_hash: passwordHash,
+        must_change_password: true,
+        updated_at: new Date()
+      }
+    });
+
+    return { userId: user.id, username: user.username, password: dni };
+  }
+
+  private async getDniOrFallback(userData: IRegisterRequest): Promise<string> {
+    const dni = await this.resolveDniFromUser(undefined, userData.persona_id, userData.afiliado_id);
+    return dni || HashUtil.generateSecurePassword(12);
+  }
+
+  private async resolveDniFromUser(userId?: number, personaId?: number | null, afiliadoId?: number | null): Promise<string | null> {
+    if (personaId) {
+      const persona = await prisma.personas.findUnique({ where: { id: personaId } });
+      if (persona?.dni) return persona.dni;
+    }
+
+    if (afiliadoId) {
+      const afiliado = await prisma.afiliados.findUnique({ where: { id: afiliadoId } });
+      if (afiliado?.persona_id) {
+        const persona = await prisma.personas.findUnique({ where: { id: afiliado.persona_id } });
+        if (persona?.dni) return persona.dni;
+      }
+    }
+
+    if (userId) {
+      const user = await prisma.usuarios.findUnique({ where: { id: userId } });
+      if (user?.persona_id) {
+        const persona = await prisma.personas.findUnique({ where: { id: user.persona_id } });
+        if (persona?.dni) return persona.dni;
+      }
+
+      if (user?.afiliado_id) {
+        const afiliado = await prisma.afiliados.findUnique({ where: { id: user.afiliado_id } });
+        if (afiliado?.persona_id) {
+          const persona = await prisma.personas.findUnique({ where: { id: afiliado.persona_id } });
+          if (persona?.dni) return persona.dni;
+        }
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -261,18 +364,25 @@ export class AuthService implements IAuthService {
       }
     }
 
+    const campings = user.UsuarioRoles
+      .filter(ur => ur.camping_id !== null)
+      .map(ur => ({ camping_id: ur.camping_id as number, rol: ur.Role?.nombre ?? '' }));
+
     return {
       id: user.id,
       username: user.username,
       email: user.email || '',
       afiliado_id: user.afiliado_id,
+      persona_id: user.persona_id,
       roles: roles as Role[],
       permisos: Array.from(permisosSet) as Permission[],
       activo: user.activo || undefined,
+      must_change_password: (user as any).must_change_password || undefined,
       ultimo_acceso: user.ultimo_acceso || undefined,
       created_at: user.created_at || undefined,
       updated_at: user.updated_at || undefined,
-      afiliado: user.Afiliado
+      afiliado: user.Afiliado,
+      campings: campings.length > 0 ? campings : undefined
     };
   }
 
@@ -341,10 +451,12 @@ export class AuthService implements IAuthService {
       throw new Error('User not found');
     }
 
-    // Verificar contraseña actual
-    const isCurrentValid = await HashUtil.comparePassword(currentPassword, user.password_hash);
-    if (!isCurrentValid) {
-      throw new Error('Current password is incorrect');
+    // Si el usuario tiene must_change_password activo, no se requiere verificar la contraseña actual
+    if (!(user as any).must_change_password) {
+      const isCurrentValid = await HashUtil.comparePassword(currentPassword, user.password_hash);
+      if (!isCurrentValid) {
+        throw new Error('Current password is incorrect');
+      }
     }
 
     // Validar nueva contraseña
@@ -359,6 +471,7 @@ export class AuthService implements IAuthService {
       where: { id: userId },
       data: { 
         password_hash: newPasswordHash,
+        must_change_password: false,
         updated_at: new Date()
       }
     });
@@ -518,6 +631,7 @@ export class AuthService implements IAuthService {
       username: user.username,
       email: user.email || '',
       afiliado_id: user.afiliado_id,
+      persona_id: user.persona_id,
       roles: roles as Role[],
       permisos: Array.from(permisosSet) as Permission[],
       activo: user.activo || undefined,

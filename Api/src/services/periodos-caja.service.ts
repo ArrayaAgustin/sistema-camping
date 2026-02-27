@@ -13,6 +13,55 @@ import {
  */
 export class PeriodosCajaService {
 
+  private async ensureCampingAccess(usuarioId: ID, campingId: ID): Promise<void> {
+    const roles = await prisma.usuario_roles.findMany({
+      where: {
+        usuario_id: usuarioId,
+        OR: [
+          { camping_id: campingId },
+          { camping_id: null }
+        ]
+      },
+      include: {
+        Role: true
+      }
+    });
+
+    if (!roles || roles.length === 0) {
+      throw new Error('Usuario sin acceso al camping');
+    }
+
+    const hasCampingRole = roles.some(r => r.camping_id === campingId);
+    if (hasCampingRole) {
+      return;
+    }
+
+    const hasAdmin = roles.some(r => r.Role?.nombre === 'admin');
+    if (hasAdmin) {
+      return;
+    }
+
+    const hasAll = roles.some(r => {
+      const permisos = r.Role?.permisos as any;
+      try {
+        if (Array.isArray(permisos)) {
+          return permisos.includes('all');
+        }
+        if (typeof permisos === 'string') {
+          const parsed = JSON.parse(permisos);
+          return Array.isArray(parsed) && parsed.includes('all');
+        }
+      } catch {
+        return false;
+      }
+      return false;
+    });
+
+    if (!hasAll) {
+      throw new Error('Usuario sin permisos para este camping');
+    }
+  }
+
   /**
    * Abre un nuevo período de caja (turno)
    */
@@ -20,6 +69,8 @@ export class PeriodosCajaService {
     const { camping_id, observaciones } = data;
 
     try {
+      await this.ensureCampingAccess(usuarioId, camping_id);
+
       // Verificar que no haya un período activo en este camping
       const periodoActivo = await prisma.periodos_caja.findFirst({
         where: {
@@ -75,6 +126,8 @@ export class PeriodosCajaService {
       if (!periodo) {
         throw new Error('Período de caja no encontrado o ya está cerrado');
       }
+
+      await this.ensureCampingAccess(usuarioId, periodo.camping_id);
 
       // Cerrar período de caja
       const periodoCerrado = await prisma.periodos_caja.update({
@@ -151,63 +204,69 @@ export class PeriodosCajaService {
   /**
    * Obtiene un período de caja por ID
    */
-  async getPeriodoById(periodoId: ID): Promise<IPeriodoCajaDetailed | null> {
-    try {
-      const periodo = await prisma.periodos_caja.findUnique({
-        where: { id: periodoId },
-        include: {
-          Camping: {
-            select: {
-              id: true,
-              nombre: true
-            }
-          },
-          UsuarioApertura: {
-            select: {
-              id: true,
-              username: true
-            }
-          },
-          UsuarioCierre: {
-            select: {
-              id: true,
-              username: true
-            }
-          },
-          Visitas: {
-            select: {
-              id: true,
-              uuid: true,
-              fecha_ingreso: true,
-              Afiliado: {
-                select: {
-                  dni: true,
-                  apellido: true,
-                  nombres: true
+ async getPeriodoById(periodoId: ID): Promise<IPeriodoCajaDetailed | null> {
+  try {
+    const periodo = await prisma.periodos_caja.findUnique({
+      where: { id: periodoId },
+      include: {
+        Camping: {
+          select: {
+            id: true,
+            nombre: true
+          }
+        },
+        UsuarioApertura: {
+          select: {
+            id: true,
+            username: true
+          }
+        },
+        UsuarioCierre: {
+          select: {
+            id: true,
+            username: true
+          }
+        },
+        Visitas: {
+          select: {
+            id: true,
+            uuid: true,
+            fecha_ingreso: true,
+            Afiliado: {
+              select: {
+                Persona: {
+                  select: {
+                    dni: true,
+                    apellido: true,
+                    nombres: true
+                  }
                 }
               }
-            },
-            orderBy: {
-              fecha_ingreso: 'desc'
             }
+          },
+          orderBy: {
+            fecha_ingreso: 'desc'
           }
         }
-      });
-
-      if (!periodo) {
-        return null;
       }
+    });
 
-      return {
-        ...periodo,
-        camping: periodo.Camping,
-        usuarioApertura: periodo.UsuarioApertura,
-        usuarioCierre: periodo.UsuarioCierre
-      } as IPeriodoCajaDetailed;
-    } catch (error: any) {
-      throw new Error(`Error al obtener período: ${error.message}`);
+    if (!periodo) {
+      return null;
     }
+
+    return {
+      ...periodo,
+      camping: periodo.Camping,
+      usuarioApertura: periodo.UsuarioApertura,
+      usuarioCierre: periodo.UsuarioCierre
+    } as IPeriodoCajaDetailed;
+
+  } catch (error: any) {
+    throw new Error(`Error al obtener período: ${error.message}`);
   }
+}
+
 
   /**
    * Obtiene el historial de períodos de caja de un camping

@@ -4,6 +4,8 @@ import { IVisitasController } from '../interfaces/visitas/visitas.interfaces';
 import { 
   ICreateVisitaRequest,
   ICreateVisitaResponse,
+  ICreateVisitaBatchRequest,
+  ICreateVisitaBatchResponse,
   IVisitaDetailed,
   ID
 } from '../types';
@@ -28,6 +30,7 @@ export class VisitasController implements IVisitasController {
 
     const {
       afiliado_id,
+      persona_id,
       camping_id,
       periodo_caja_id,
       acompanantes,
@@ -36,9 +39,9 @@ export class VisitasController implements IVisitasController {
     } = req.body;
 
     // Validaciones básicas
-    if (!afiliado_id || !camping_id) {
+    if ((!afiliado_id && !persona_id) || !camping_id) {
       return responseHandler.validationError(res, [
-        'afiliado_id y camping_id son requeridos'
+        'camping_id y (afiliado_id o persona_id) son requeridos'
       ]);
     }
 
@@ -49,6 +52,7 @@ export class VisitasController implements IVisitasController {
     try {
       const visitaData: ICreateVisitaRequest = {
         afiliado_id,
+        persona_id,
         camping_id,
         periodo_caja_id,
         acompanantes,
@@ -65,6 +69,40 @@ export class VisitasController implements IVisitasController {
     } catch (error: any) {
       console.error('❌ Create visita error:', error.message);
       return responseHandler.internalError(res, 'Error al registrar visita');
+    }
+  }
+
+  /**
+   * POST /visitas/batch - Crear múltiples visitas
+   */
+  async createVisitasBatch(req: Request, res: Response): Promise<Response<ICreateVisitaBatchResponse>> {
+    const { camping_id, periodo_caja_id, personas, observaciones, registro_offline } = req.body as ICreateVisitaBatchRequest;
+
+    if (!camping_id || !Array.isArray(personas) || personas.length === 0) {
+      return responseHandler.validationError(res, [
+        'camping_id y personas[] son requeridos'
+      ]);
+    }
+
+    if (!req.user) {
+      return responseHandler.unauthorized(res, 'Authentication required');
+    }
+
+    try {
+      const batchData: ICreateVisitaBatchRequest = {
+        camping_id,
+        periodo_caja_id: periodo_caja_id || null,
+        personas,
+        observaciones,
+        registro_offline
+      };
+
+      const result = await visitasService.createVisitasBatch(batchData, req.user.id);
+
+      return responseHandler.success(res, result, 'Batch processed');
+    } catch (error: any) {
+      console.error('❌ Create visitas batch error:', error.message);
+      return responseHandler.internalError(res, 'Error al registrar visitas batch');
     }
   }
 

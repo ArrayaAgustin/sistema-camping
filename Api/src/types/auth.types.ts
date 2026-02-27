@@ -15,6 +15,9 @@ export enum Permission {
   ALL = 'all',
   READ_AFILIADOS = 'read:afiliados',
   UPDATE_AFILIADOS = 'update:afiliados',
+  READ_PERSONAS = 'read:personas',
+  CREATE_PERSONAS = 'create:personas',
+  UPDATE_PERSONAS = 'update:personas',
   READ_OWN = 'read:own',
   UPDATE_OWN = 'update:own',
   CREATE_VISITAS = 'create:visitas',
@@ -34,6 +37,7 @@ export interface IJWTPayload {
   userId: ID;
   username: string;
   afiliadoId: ID | null;
+  personaId?: ID;
   roles: Role[];
   permisos: Permission[];
   iat?: number;  // issued at
@@ -50,9 +54,11 @@ export interface IAuthenticatedUser {
   username: string;
   email: string | null;
   afiliado_id: ID | null;
+  personaId?: ID;
   roles: Role[];
   permisos: Permission[];
   activo: boolean;
+  must_change_password?: boolean;
   ultimo_acceso?: Timestamp;
 }
 
@@ -72,9 +78,11 @@ export interface ILoginResponse {
     username: string;
     email: string | null;
     afiliado_id: ID | null;
+    persona_id?: ID;
     roles: Role[];
     permisos: Permission[];
     activo?: boolean;
+    must_change_password?: boolean;
   };
   timestamp: string;
 }
@@ -84,6 +92,7 @@ export interface ICreateUserRequest {
   username: string;
   password: string;
   afiliado_id?: ID;
+  persona_id?: ID;
   email?: string;
   role_id?: ID;
 }
@@ -128,9 +137,10 @@ export interface IPasswordValidation {
 // Request para registrar usuario
 export interface IRegisterRequest {
   username: string;
-  password: string;
+  password?: string;
   email?: string;
   afiliado_id?: ID;
+  persona_id?: ID;
 }
 
 // Response de autenticación
@@ -148,13 +158,17 @@ export interface IUser {
   username: string;
   email: string | null;
   afiliado_id: ID | null;
+  persona_id?: ID | null;
+  personaId?: ID | null;
   roles: Role[];
   permisos: Permission[];
   activo?: boolean;
+  must_change_password?: boolean;
   ultimo_acceso?: Timestamp | null;
   created_at?: Timestamp;
   updated_at?: Timestamp;
   afiliado?: any;  // Para compatibilidad
+  campings?: Array<{ camping_id: number; rol: string }>;
 }
 
 // ========================================
